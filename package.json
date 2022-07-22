@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "licence": "MIT",
   "dependencies": {
     "serialport": "^10.4.0"
   }
