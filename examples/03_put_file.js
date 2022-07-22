@@ -1,7 +1,7 @@
 const Board = require('../micropython.js')
 
 let board = new Board({
-  device: '/dev/tty.usbmodem141101'
+  device: process.env.PORT || '/dev/tty.usbmodem141101'
 })
 
 console.log('connect')
