@@ -1,0 +1,17 @@
+const Board = require('../micropython.js')
+
+let board = new Board({
+  device: '/dev/tty.usbmodem141101'
+})
+
+console.log('connect')
+board.open()
+  .then(async () => {
+    try {
+      await board.execfile('./test.py')
+      console.log('disconnect')
+    } catch(e) {
+      console.log('error', e)
+    }
+      board.close()
+  })
