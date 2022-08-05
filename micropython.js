@@ -225,6 +225,27 @@ class MicroPythonBoard {
     return Promise.reject(new Error(`Must specify source and destination paths`))
   }
 
+  async fs_save(content, dest) {
+    if (content && dest) {
+      if (typeof content === 'string') {
+        content = Buffer.from(content)
+      }
+      await this.enter_raw_repl()
+      let output = await this.exec_raw({
+        command: `f=open('${dest}','w')\nw=f.write`
+      })
+      for (let i = 0; i < content.length; i+=64) {
+        let slice = content.slice(i, i+64)
+        slice = slice.toString()
+        slice = slice.replace(/"""/g, `\\"\\"\\"`)
+        await this.serial.write(`w("""${slice}""")`)
+        await this.serial.write(`\x04`)
+        await sleep(50)
+      }
+      return this.exit_raw_repl()
+    } else {
+      return Promise.reject(new Error(`Must specify content and destination path`))
+    }
   }
 
   async fs_mkdir() {
