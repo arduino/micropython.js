@@ -189,8 +189,8 @@ class MicroPythonBoard {
     const output = await this.exec_raw({
       command: `import uos\nprint(uos.listdir())`
     })
-    console.log(output)
-    return this.exit_raw_repl()
+    await this.exit_raw_repl()
+    return Promise.resolve(output)
   }
 
   async fs_cat(filePath) {
@@ -199,14 +199,14 @@ class MicroPythonBoard {
       const output = await this.exec_raw({
         command: `with open('${filePath}') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
       })
-      console.log(output)
-      return this.exit_raw_repl()
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
     }
-    return Promise.reject()
+    return Promise.reject(new Error(`Path to file was not specified`))
   }
 
   async fs_put(src, dest) {
-    if (src) {
+    if (src && dest) {
       const content = fs.readFileSync(path.resolve(src))
       await this.enter_raw_repl()
       let output = await this.exec_raw({
@@ -214,7 +214,7 @@ class MicroPythonBoard {
       })
       for (let i = 0; i < content.length; i+=64) {
         let slice = content.slice(i, i+64)
-        slice =  slice.toString()
+        slice = slice.toString()
         slice = slice.replace(/"""/g, `\\"\\"\\"`)
         await this.serial.write(`w("""${slice}""")`)
         await this.serial.write(`\x04`)
@@ -222,7 +222,9 @@ class MicroPythonBoard {
       }
       return this.exit_raw_repl()
     }
-    return Promise.reject()
+    return Promise.reject(new Error(`Must specify source and destination paths`))
+  }
+
   }
 
   async fs_mkdir() {
