@@ -12,26 +12,30 @@ function sleep(millis) {
 }
 
 class MicroPythonBoard {
-  constructor(options) {
-    const { device, autoOpen = false } = options
-    this.device = device || {}
+  constructor() {
+    this.device = null
     this.in_raw_repl = false
-    this.use_raw_paste = true
+  }
+
+  listPorts() {
+    return SerialPort.list()
+  }
+
+  open(device) {
+    if (device) {
+      this.device = device
+    }
+    if (!this.device) {
+      throw new Error(`No device specified`)
+    }
 
     this.serial = new SerialPort({
-      path: device,
+      path: this.device,
 			baudRate: 115200,
       lock: false,
 			autoOpen: false
 		})
 
-    if (autoOpen) {
-      this.open()
-    }
-
-  }
-
-  open() {
     return new Promise((resolve, reject) => {
       this.serial.open((err) => {
         if (err) {
@@ -128,10 +132,6 @@ class MicroPythonBoard {
     })
   }
 
-  // SKIPPING THIS FOR NOW
-  // raw_paste_write() {
-  //   // Only used if `use_raw_paste` is true
-  // }
 
   exec_raw_no_follow(options) {
     const { timeout = null, command = '' } = options || {}

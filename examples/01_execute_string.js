@@ -1,10 +1,8 @@
 const Board = require('../micropython.js')
 
-let board = new Board({
-  device: process.env.PORT || '/dev/tty.usbmodem141101'
-})
+let board = new Board()
 
-board.open()
+board.open(process.env.PORT || '/dev/tty.usbmodem141101')
   .then(() => {
     console.log('connected')
     console.log('entering raw repl')

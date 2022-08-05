@@ -1,11 +1,8 @@
 const Board = require('../micropython.js')
 
-let board = new Board({
-  device: process.env.PORT || '/dev/tty.usbmodem141101'
-})
-
 console.log('connect')
-board.open()
+let board = new Board()
+board.open(process.env.PORT || '/dev/tty.usbmodem141101')
   .then(async () => {
     try {
       await board.fs_cat('test.py')
