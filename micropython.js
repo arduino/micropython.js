@@ -57,7 +57,9 @@ class MicroPythonBoard {
 
   read_until(options) {
     const {
-      ending = `\n`, timeout = null, data_consumer = () => false
+      ending = `\n`,
+      timeout = null,
+      data_consumer = () => false
     } = options || {}
     return new Promise((resolve, reject) => {
       const parser = this.serial.pipe(new ReadlineParser({ delimiter: ending }))
@@ -75,8 +77,7 @@ class MicroPythonBoard {
     })
   }
 
-  enter_raw_repl(options) {
-    const { timeout = null } = options || {}
+  enter_raw_repl(timeout) {
     return new Promise(async (resolve, reject) => {
       // ctrl-C twice: interrupt any running program
       await this.serial.write(Buffer.from(`\r\x03\x03`))
@@ -168,9 +169,20 @@ class MicroPythonBoard {
     return this.follow({ timeout })
   }
 
-  async eval(options) {
-    const { command = '' } = options || {}
-    return await this.serial.write(Buffer.from(command))
+  async eval(k) {
+    return await this.serial.write(Buffer.from(k))
+  }
+
+  async stop() {
+    // Dismiss any data with ctrl-C
+    await this.serial.write(Buffer.from(`\x03`))
+  }
+
+  async reset() {
+    // Dismiss any data with ctrl-C
+    await this.serial.write(Buffer.from(`\x03`))
+    // Soft reboot
+    await this.serial.write(Buffer.from(`\x04`))
   }
 
   async execfile(filePath) {
@@ -191,7 +203,6 @@ class MicroPythonBoard {
     })
     console.log(output)
     return this.exit_raw_repl()
-    return Promise.reject()
   }
 
   async fs_cat(filePath) {
