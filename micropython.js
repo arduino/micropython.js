@@ -110,26 +110,14 @@ class MicroPythonBoard {
   }
 
   follow(options) {
-    const { timeout = null, data_consumer = false } = options || {}
+    const { timeout = null } = options || {}
     return new Promise(async (resolve, reject) => {
       // wait for normal output
       const data = await this.read_until({
         ending: Buffer.from(`\x04`),
         timeout: timeout
       })
-      // TODO: Slice out the EOF
-      // console.log('normal output:', data)
       resolve(data)
-
-      // // wait for error output
-      // const data_err = await this.read_until({
-      //   ending: Buffer.from(`\x04`),
-      //   timeout: timeout
-      // })
-      // // TODO: Slice out the EOF
-      // console.log('error output:', data_err)
-      //
-      // resolve([data, data_err])
     })
   }
 
@@ -216,11 +204,6 @@ class MicroPythonBoard {
     }
     return Promise.reject()
   }
-
-  // TODO: When implementing command line
-  // fs_get() {
-  //
-  // }
 
   async fs_put(src, dest) {
     if (src) {
