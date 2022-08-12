@@ -12,6 +12,9 @@ board.open(process.env.PORT || '/dev/tty.usbmodem141101')
     console.log('executing raw')
     return board.exec_raw({
       command: `
+"""
+Warning: You may need to change the pin number
+"""
 from machine import Pin
 from time import sleep
 pin = Pin(6, Pin.OUT)
