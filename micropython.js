@@ -14,6 +14,7 @@ function sleep(millis) {
 class MicroPythonBoard {
   constructor() {
     this.device = null
+    this.serial = null
     this.in_raw_repl = false
   }
 
@@ -21,12 +22,16 @@ class MicroPythonBoard {
     return SerialPort.list()
   }
 
-  open(device) {
+  async open(device) {
     if (device) {
       this.device = device
     }
     if (!this.device) {
       throw new Error(`No device specified`)
+    }
+    if (this.serial && this.serial.isOpen) {
+      await this.serial.close()
+      this.serial = null
     }
 
     this.serial = new SerialPort({
@@ -37,7 +42,7 @@ class MicroPythonBoard {
 		})
 
     return new Promise((resolve, reject) => {
-      this.serial.open((err) => {
+      this.serial.open(async (err) => {
         if (err) {
           reject(err)
         } else {
@@ -212,13 +217,14 @@ class MicroPythonBoard {
       let output = await this.exec_raw({
         command: `f=open('${dest}','w')\nw=f.write`
       })
-      for (let i = 0; i < content.length; i+=64) {
-        let slice = content.slice(i, i+64)
+      await sleep(100)
+      for (let i = 0; i < content.length; i+=128) {
+        let slice = content.slice(i, i+128)
         slice = slice.toString()
         slice = slice.replace(/"""/g, `\\"\\"\\"`)
         await this.serial.write(`w("""${slice}""")`)
         await this.serial.write(`\x04`)
-        await sleep(50)
+        await sleep(100)
       }
       return this.exit_raw_repl()
     }
@@ -238,7 +244,8 @@ class MicroPythonBoard {
         let slice = content.slice(i, i+64)
         slice = slice.toString()
         slice = slice.replace(/"""/g, `\\"\\"\\"`)
-        await this.serial.write(`w("""${slice}""")`)
+        // slice = slice.replace(//g, ``)
+        await this.serial.write(`w("""${slice}""")\n`)
         await this.serial.write(`\x04`)
         await sleep(50)
       }
@@ -266,7 +273,6 @@ class MicroPythonBoard {
       const output = await this.exec_raw({
         command: `import uos\nuos.rmdir('${filePath}')`
       })
-      console.log(output)
       return this.exit_raw_repl()
     }
     return Promise.reject()
@@ -278,7 +284,17 @@ class MicroPythonBoard {
       const output = await this.exec_raw({
         command: `import uos\nuos.remove('${filePath}')`
       })
-      console.log(output)
+      return this.exit_raw_repl()
+    }
+    return Promise.reject()
+  }
+
+  async fs_rename(oldFilePath, newFilePath) {
+    if (oldFilePath && newFilePath) {
+      await this.enter_raw_repl()
+      const output = await this.exec_raw({
+        command: `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
+      })
       return this.exit_raw_repl()
     }
     return Promise.reject()
