@@ -17,10 +17,18 @@ board.open(process.env.PORT || '/dev/tty.usbmodem141101')
     try {
       let output = await board.fs_ls()
       let files = extractFileArray(output)
-      console.log('files', files)
+      console.log('files at "/"', files)
       console.log('disconnect')
     } catch(e) {
       console.log('error', e)
     }
+    try {
+      let output = await board.fs_ls('lib')
+      let files = extractFileArray(output)
+      console.log('files at "/lib"', files)
+    } catch(e) {
+      console.log('error', e)
+    }
     board.close()
+    console.log('disconnect')
   })
