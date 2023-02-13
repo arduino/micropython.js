@@ -54,8 +54,8 @@ const listFiles = (args, port) => {
         .then(async () => {
             const folder = args[0] || '/'
             try {
-                let output = await board.fs_ls(folder)
-                let files = extractFileArray(output)
+                const output = await board.fs_ls(folder)
+                const files = extractFileArray(output)
                 console.log(`files at "${folder}"`, files)
             } catch(e) {
                 console.log('error', e)
@@ -71,11 +71,11 @@ const executeString = (args, port) => {
     board.open(port)
         .then(() => board.enter_raw_repl())
         .then(() => board.exec_raw({ command: code }))
-        .then((out) => {
+        .then(async (out) => {
+            await board.exit_raw_repl()
+            await board.close()
             console.log(out)
-            return board.exit_raw_repl()
         })
-        .then(() => board.close())
         .catch((err) => {
             console.log('error')
             console.log(err)
@@ -86,12 +86,13 @@ const executeString = (args, port) => {
 
 const executeFile = (args, port) => {
     ensurePort(port)
-    let board = new Board()
+    const board = new Board()
     const filename = args[0] || ''
     board.open(port)
         .then(async () => {
             try {
-                await board.execfile(filename)
+                const out = await board.execfile(filename)
+                console.log(out)
             } catch(e) {
                 console.log('error', e)
             }
@@ -106,7 +107,8 @@ const putFile = (args, port) => {
     board.open(port)
         .then(async () => {
             try {
-                await board.fs_put(diskFilename, boardFilename)
+                const out = await board.fs_put(diskFilename, boardFilename)
+                console.log(out)
             } catch(e) {
                 console.log('error', e)
             }
@@ -130,7 +132,40 @@ const getFile = (args, port) => {
             }
             board.close()
         })
+}
 
+const removeFile = (args, port) => {
+    ensurePort(port)
+    const board = new Board()
+    const [ boardFilename ] = args
+
+    board.open(port)
+        .then(async () => {
+            try {
+                const out = await board.fs_rm(boardFilename)
+                console.log(out)
+            } catch(e) {
+                console.log('error', e)
+            }
+            board.close()
+        })
+}
+
+const removeFolder = (args, port) => {
+    ensurePort(port)
+    const board = new Board()
+    const [ boardDirname ] = args
+
+    board.open(port)
+        .then(async () => {
+            try {
+                const out = await board.fs_rmdir(boardDirname)
+                console.log(out)
+            } catch(e) {
+                console.log('error', e)
+            }
+            board.close()
+        })
 }
 
 const operations = {
@@ -139,7 +174,9 @@ const operations = {
     '--executestring': executeString,
     '--executefile': executeFile,
     '--putfile': putFile,
-    '--getfile': getFile
+    '--getfile': getFile,
+    '--removefile': removeFile,
+    '--removefolder': removeFolder
 }
 
 let args = extractArguments(process.argv)

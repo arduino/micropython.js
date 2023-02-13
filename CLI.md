@@ -11,6 +11,8 @@
 * `--executefile filename.py`: Run file from the disk
 * `--putfile fileA.py fileB.py`: Upload `fileA.py` from the disk to board renaming it to `fileB.py`
 * `--getfile fileA.py fileB.py`: Download `fileA.py` from the board to disk renaming it to `fileB.py`
+* `--removefile fileA.py`: Remove `fileA.py` from the board
+* `--removedir foldername`: Remove `foldername` from the board
 
 ## Examples
 
