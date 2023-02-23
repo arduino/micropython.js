@@ -124,9 +124,9 @@ const getFile = (args, port) => {
         .then(async () => {
             try {
                 let output = await board.fs_cat(boardFilename)
-                output = output.split('OK')
-                console.log(output[2])
-                fs.writeFileSync(diskFilename, output[2])
+                output = output.split('raw REPL; CTRL-B to exit\r\n>OK')
+                const content = output[1].slice(0, -1)
+                fs.writeFileSync(diskFilename, content)
             } catch(e) {
                 console.log('error', e)
             }

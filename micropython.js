@@ -232,7 +232,7 @@ class MicroPythonBoard {
     if (filePath) {
       await this.enter_raw_repl()
       const output = await this.exec_raw({
-        command: `with open('${filePath}') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+        command: `with open('${filePath}', 'r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
       })
       await this.exit_raw_repl()
       return Promise.resolve(output)
@@ -242,18 +242,22 @@ class MicroPythonBoard {
 
   async fs_put(src, dest) {
     if (src && dest) {
-      const content = fs.readFileSync(path.resolve(src))
+      const contentBuffer = fs.readFileSync(path.resolve(src))
       await this.enter_raw_repl()
       let output = await this.exec_raw({
         command: `f=open('${dest}','w')\nw=f.write`
       })
       await sleep(100)
-      for (let i = 0; i < content.length; i+=128) {
-        let slice = content.subarray(i, i+128)
-        slice = slice.toString()
-        slice = escape_string(slice)
-        await this.serial.write(`w("""${slice}""")`)
-        await this.serial.write(`\x04`)
+      const contentString = contentBuffer.toString()
+      const hexArray = contentString.split('').map(
+        c => c.charCodeAt(0).toString(16).padStart(2, '0')
+      )
+      const chunkSize = 256
+      for (let i = 0; i < hexArray.length; i+= chunkSize) {
+        let slice = hexArray.slice(i, i+chunkSize)
+        let bytes = slice.map(h => `0x${h}`)
+        let line = `w(bytes([${bytes.join(',')}]))\x04`
+        await this.serial.write(line)
         await sleep(100)
       }
       return this.exit_raw_repl()
