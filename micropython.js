@@ -12,9 +12,9 @@ function sleep(millis) {
 }
 
 function escape_string(string) {
-  string = string.replace(/"""/g, `\\"\\"\\"`)
   string = string.replace(/\'/g, `\\'`)
   string = string.replace(/\"/g, `\\"`)
+  string = string.replace(/"""/g, `\\"\\"\\"`)
   return string
 }
 
@@ -249,7 +249,7 @@ class MicroPythonBoard {
       })
       await sleep(100)
       for (let i = 0; i < content.length; i+=128) {
-        let slice = content.slice(i, i+128)
+        let slice = content.subarray(i, i+128)
         slice = slice.toString()
         slice = escape_string(slice)
         await this.serial.write(`w("""${slice}""")`)
