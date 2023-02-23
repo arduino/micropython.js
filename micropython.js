@@ -235,7 +235,9 @@ class MicroPythonBoard {
         command: `with open('${filePath}', 'r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
       })
       await this.exit_raw_repl()
-      return Promise.resolve(output)
+      const outputArray = output.split('raw REPL; CTRL-B to exit\r\n>OK')
+      const content = outputArray[1].slice(0, -1)
+      return Promise.resolve(content)
     }
     return Promise.reject(new Error(`Path to file was not specified`))
   }
