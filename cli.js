@@ -26,15 +26,6 @@ const extractCommands = (args) => {
     return commands
 }
 
-const extractFileArray = (output) => {
-    output = output.replace(/'/g, '"');
-    output = output.split('OK')
-    let files = output[2] || ''
-    files = files.slice(0, files.indexOf(']')+1)
-    files = JSON.parse(files)
-    return files
-}
-
 function ensurePort(port) {
     if (!port) throw new Error('You must specify a port.')
 }
@@ -55,8 +46,7 @@ const listFiles = (args, port) => {
             const folder = args[0] || '/'
             try {
                 const output = await board.fs_ls(folder)
-                const files = extractFileArray(output)
-                console.log(`files at "${folder}"`, files)
+                console.log(`files at "${folder}"`, output)
             } catch(e) {
                 console.log('error', e)
             }
