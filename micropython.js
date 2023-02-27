@@ -223,9 +223,15 @@ class MicroPythonBoard {
         command += `except OSError:\n`
         command += `  print([])\n`
     await this.enter_raw_repl()
-    const output = await this.exec_raw({ command: command })
+    let output = await this.exec_raw({ command: command })
     await this.exit_raw_repl()
-    return Promise.resolve(output)
+    // Convert text output to js array
+    output = output.replace(/'/g, '"');
+    output = output.split('OK')
+    let files = output[2] || ''
+    files = files.slice(0, files.indexOf(']')+1)
+    files = JSON.parse(files)
+    return Promise.resolve(files)
   }
 
   async fs_cat(filePath) {
