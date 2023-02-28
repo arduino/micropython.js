@@ -16,16 +16,14 @@ board.open(process.env.PORT || '/dev/tty.usbmodem141101')
   .then(async () => {
     try {
       let output = await board.fs_ls()
-      let files = extractFileArray(output)
-      console.log('files at "/"', files)
+      console.log('files at "/"', output)
       console.log('disconnect')
     } catch(e) {
       console.log('error', e)
     }
     try {
       let output = await board.fs_ls('lib')
-      let files = extractFileArray(output)
-      console.log('files at "/lib"', files)
+      console.log('files at "/lib"', output)
     } catch(e) {
       console.log('error', e)
     }
