@@ -11,11 +11,10 @@ function sleep(millis) {
   })
 }
 
-function escape_string(string) {
-  string = string.replace(/\'/g, `\\'`)
-  string = string.replace(/\"/g, `\\"`)
-  string = string.replace(/"""/g, `\\"\\"\\"`)
-  return string
+function fixLineBreak(str) {
+  // All line breaks must be converted to \n
+  // https://stackoverflow.com/questions/4025760/python-file-write-creating-extra-carriage-return
+  return str.replace(/\r\n/g, '\n')
 }
 
 class MicroPythonBoard {
@@ -226,7 +225,7 @@ class MicroPythonBoard {
     let output = await this.exec_raw({ command: command })
     await this.exit_raw_repl()
     // Convert text output to js array
-    output = output.replace(/'/g, '"');
+    output = output.replace(/'/g, '"')
     output = output.split('OK')
     let files = output[2] || ''
     files = files.slice(0, files.indexOf(']')+1)
@@ -238,7 +237,7 @@ class MicroPythonBoard {
     if (filePath) {
       await this.enter_raw_repl()
       const output = await this.exec_raw({
-        command: `with open('${filePath}', 'r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+        command: `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
       })
       await this.exit_raw_repl()
       const outputArray = output.split('raw REPL; CTRL-B to exit\r\n>OK')
@@ -256,7 +255,8 @@ class MicroPythonBoard {
         command: `f=open('${dest}','w')\nw=f.write`
       })
       await sleep(100)
-      const contentString = contentBuffer.toString()
+      let contentString = contentBuffer.toString()
+      contentString = fixLineBreak(contentString)
       const hexArray = contentString.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
@@ -275,20 +275,22 @@ class MicroPythonBoard {
 
   async fs_save(content, dest) {
     if (content && dest) {
-      if (typeof content === 'string') {
-        content = Buffer.from(content)
-      }
+      content = fixLineBreak(content)
       await this.enter_raw_repl()
       let output = await this.exec_raw({
         command: `f=open('${dest}','w')\nw=f.write`
       })
-      for (let i = 0; i < content.length; i+=64) {
-        let slice = content.slice(i, i+64)
-        slice = slice.toString()
-        slice = escape_string(slice)
-        await this.serial.write(`w("""${slice}""")\n`)
-        await this.serial.write(`\x04`)
-        await sleep(50)
+      await sleep(100)
+      const hexArray = content.split('').map(
+        c => c.charCodeAt(0).toString(16).padStart(2, '0')
+      )
+      const chunkSize = 256
+      for (let i = 0; i < hexArray.length; i+= chunkSize) {
+        let slice = hexArray.slice(i, i+chunkSize)
+        let bytes = slice.map(h => `0x${h}`)
+        let line = `w(bytes([${bytes.join(',')}]))\x04`
+        await this.serial.write(line)
+        await sleep(100)
       }
       return this.exit_raw_repl()
     } else {
