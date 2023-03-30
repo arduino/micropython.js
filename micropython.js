@@ -163,10 +163,11 @@ class MicroPythonBoard {
   }
 
   exec_raw(options) {
-    const { timeout = null, command = '' } = options || {}
+    const { timeout = null, command = '', data_consumer = () => false } = options || {}
     this.exec_raw_no_follow({
       timeout: timeout,
-      command: command
+      command: command,
+      data_consumer: data_consumer
     })
     return this.follow({ timeout })
   }
@@ -187,12 +188,14 @@ class MicroPythonBoard {
     await this.serial.write(Buffer.from(`\x04`))
   }
 
-  async execfile(filePath) {
+  async execfile(filePath, data_consumer) {
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
-      const output = await this.exec_raw({ command: content })
-      console.log(output)
+      const output = await this.exec_raw({ 
+        command: content 
+      })
+      data_consumer(output)
       return this.exit_raw_repl()
     }
     return Promise.reject()
@@ -247,7 +250,8 @@ class MicroPythonBoard {
     return Promise.reject(new Error(`Path to file was not specified`))
   }
 
-  async fs_put(src, dest) {
+  async fs_put(src, dest, data_consumer) {
+    data_consumer = data_consumer || function() {}
     if (src && dest) {
       const contentBuffer = fs.readFileSync(path.resolve(src))
       await this.enter_raw_repl()
@@ -265,6 +269,7 @@ class MicroPythonBoard {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
+        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
         await this.serial.write(line)
         await sleep(100)
       }
@@ -273,12 +278,13 @@ class MicroPythonBoard {
     return Promise.reject(new Error(`Must specify source and destination paths`))
   }
 
-  async fs_save(content, dest) {
+  async fs_save(content, dest, data_consumer) {
     if (content && dest) {
       content = fixLineBreak(content)
       await this.enter_raw_repl()
       let output = await this.exec_raw({
-        command: `f=open('${dest}','w')\nw=f.write`
+        command: `f=open('${dest}','w')\nw=f.write`,
+        data_consumer: (d) => console.log('data consumer', d)
       })
       await sleep(100)
       const hexArray = content.split('').map(
@@ -289,6 +295,7 @@ class MicroPythonBoard {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
+        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
         await this.serial.write(line)
         await sleep(100)
       }
