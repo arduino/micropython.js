@@ -34,16 +34,17 @@ function ensurePort(port) {
 
 const listPorts = (args) => {
     const board = new Board()
-    board.listPorts()
+    return board.listPorts()
         .then((ports) => {
             log('available ports', ports)
+            return Promise.resolve()
         })
 }
 
 const listFiles = (args, port) => {
     ensurePort(port)
     const board = new Board()
-    board.open(port)
+    return board.open(port)
         .then(async () => {
             const folder = args[0] || '/'
             try {
@@ -53,6 +54,7 @@ const listFiles = (args, port) => {
                 log('error', e)
             }
             board.close()
+            return Promise.resolve()
         })
 }
 
@@ -60,13 +62,14 @@ const executeString = (args, port, dataConsumer) => {
     ensurePort(port)
     const board = new Board()
     const code = args[0] || ''
-    board.open(port)
+    return board.open(port)
         .then(() => board.enter_raw_repl())
         .then(() => board.exec_raw({ command: code, data_consumer: dataConsumer }))
         .then(async (out) => {
             await board.exit_raw_repl()
             await board.close()
             log(out)
+            return Promise.resolve()
         })
         .catch((err) => {
             log('error', err)
@@ -80,7 +83,7 @@ const executeFile = (args, port, dataConsumer) => {
     const board = new Board()
     const filename = args[0] || ''
     const consumer = dataConsumer || function() {}
-    board.open(port)
+    return board.open(port)
         .then(async () => {
             try {
                 const out = await board.execfile(filename, consumer)
@@ -89,6 +92,7 @@ const executeFile = (args, port, dataConsumer) => {
                 log('error', e)
             }
             board.close()
+            return Promise.resolve()
         })
 }
 
@@ -115,7 +119,7 @@ const getFile = (args, port, dataConsumer) => {
     const board = new Board()
     const [ boardFilename, diskFilename ] = args
     const consumer = dataConsumer || function() {}
-    board.open(port)
+    return board.open(port)
         .then(async () => {
             try {
                 let output = await board.fs_cat(boardFilename, consumer)
@@ -126,6 +130,7 @@ const getFile = (args, port, dataConsumer) => {
                 log('error', e)
             }
             board.close()
+            return Promise.resolve()
         })
 }
 
@@ -134,7 +139,7 @@ const removeFile = (args, port) => {
     const board = new Board()
     const [ boardFilename ] = args
 
-    board.open(port)
+    return board.open(port)
         .then(async () => {
             try {
                 const out = await board.fs_rm(boardFilename)
@@ -143,6 +148,7 @@ const removeFile = (args, port) => {
                 log('error', e)
             }
             board.close()
+            return Promise.resolve()
         })
 }
 
@@ -151,7 +157,7 @@ const removeFolder = (args, port) => {
     const board = new Board()
     const [ boardDirname ] = args
 
-    board.open(port)
+    return board.open(port)
         .then(async () => {
             try {
                 const out = await board.fs_rmdir(boardDirname)
@@ -160,6 +166,7 @@ const removeFolder = (args, port) => {
                 log('error', e)
             }
             board.close()
+            return Promise.resolve()
         })
 }
 
