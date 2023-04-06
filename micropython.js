@@ -233,6 +233,9 @@ class MicroPythonBoard {
     let files = output[2] || ''
     files = files.slice(0, files.indexOf(']')+1)
     files = JSON.parse(files)
+    files.sort(function (a, b) {
+      return a.localeCompare(b);
+    });
     return Promise.resolve(files)
   }
 
