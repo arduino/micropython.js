@@ -7,6 +7,7 @@
 * `--listports`: List available USB ports
 * `--port /dev/tty`: Specify which port to connect. Required for the options below.
 * `--listfiles`: List files in the board
+* `--ilistfiles`: Same as `--listfiles` but with additional information (size, inodes, folder/file, etc...)
 * `--executestring "print('watch out for string escaping')”`: Evaluate string
 * `--executefile filename.py`: Run file from the disk
 * `--putfile fileA.py fileB.py`: Upload `fileA.py` from the disk to board renaming it to `fileB.py`
@@ -47,6 +48,33 @@ files at "/" [
   '.Trash-1000',
   'lib'
 ]
+```
+
+### Listing files and folders in the board
+
+AS explained on the [documentation](https://docs.micropython.org/en/v1.9.2/pyboard/library/uos.html#uos.ilistdir), the second element on the array is the file type:
+
+> 0x4000 for directories and 0x8000 for regular files
+
+```
+$ node cli.js --verbose --port /dev/ttyACM0 --ilistfiles
+VERBOSE
+executing command:
+command --ilistfiles
+arguments []
+port /dev/ttyACM0
+files at "/" [
+  [ 'boot.py', 32768, 0, 1714 ],
+  [ '.fseventsd', 16384, 0, 0 ],
+  [ 'testy.py', 32768, 0, 78 ],
+  [ 'file.py', 32768, 0, 929 ],
+  [ 'yolo', 16384, 0, 0 ],
+  [ 'lib', 16384, 0, 0 ],
+  [ '.Trashes', 16384, 0, 0 ],
+  [ 'otroteste.py', 32768, 0, 929 ],
+  [ 'turing_machine.py', 32768, 0, 929 ]
+]
+command executed --ilistfiles
 ```
 
 ### Evaluating a string
@@ -207,5 +235,5 @@ port /dev/ttyACM0
 98%
 99%
 undefined
-command executed --putfile 
+command executed --putfile
 ```
