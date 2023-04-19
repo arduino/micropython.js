@@ -192,8 +192,8 @@ class MicroPythonBoard {
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
-      const output = await this.exec_raw({ 
-        command: content 
+      const output = await this.exec_raw({
+        command: content
       })
       data_consumer(output)
       return this.exit_raw_repl()
@@ -232,6 +232,29 @@ class MicroPythonBoard {
     output = output.split('OK')
     let files = output[2] || ''
     files = files.slice(0, files.indexOf(']')+1)
+    files = JSON.parse(files)
+    return Promise.resolve(files)
+  }
+
+  async fs_ils(folderPath) {
+    folderPath = folderPath || ''
+    folderPath = folderPath || ''
+    let command = `import uos\n`
+        command += `try:\n`
+        command += `  l=[]\n`
+        command += `  for file in uos.ilistdir("${folderPath}"):\n`
+        command += `    l.append(list(file))\n`
+        command += `  print(l)\n`
+        command += `except OSError:\n`
+        command += `  print([])\n`
+    await this.enter_raw_repl()
+    let output = await this.exec_raw({ command: command })
+    await this.exit_raw_repl()
+    // Convert text output to js array
+    output = output.replace(/'/g, '"')
+    output = output.split('OK')
+    let files = output[2] || ''
+    files = files.slice(0, files.length-1)
     files = JSON.parse(files)
     return Promise.resolve(files)
   }
