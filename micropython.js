@@ -189,6 +189,7 @@ class MicroPythonBoard {
   }
 
   async execfile(filePath, data_consumer) {
+    data_consumer = data_consumer || function() {}
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
@@ -302,6 +303,7 @@ class MicroPythonBoard {
   }
 
   async fs_save(content, dest, data_consumer) {
+    data_consumer = data_consumer || function() {}
     if (content && dest) {
       content = fixLineBreak(content)
       await this.enter_raw_repl()
