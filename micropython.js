@@ -330,7 +330,7 @@ class MicroPythonBoard {
     }
   }
 
-  async fs_mkdir() {
+  async fs_mkdir(filePath) {
     if (filePath) {
       await this.enter_raw_repl()
       const output = await this.exec_raw({
@@ -341,7 +341,7 @@ class MicroPythonBoard {
     return Promise.reject()
   }
 
-  async fs_rmdir() {
+  async fs_rmdir(filePath) {
     if (filePath) {
       let command = `import uos\n`
           command += `try:\n`
