@@ -17,6 +17,20 @@ function fixLineBreak(str) {
   return str.replace(/\r\n/g, '\n')
 }
 
+function writeAndDrain(serial, data) {
+  // https://serialport.io/docs/api-stream#drain-example
+  return new Promise((resolve, reject) => {
+    serial.write(data)
+    serial.drain((err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
 class MicroPythonBoard {
   constructor() {
     this.device = null
@@ -134,7 +148,6 @@ class MicroPythonBoard {
       resolve(data)
     })
   }
-
 
   exec_raw_no_follow(options) {
     const { timeout = null, command = '' } = options || {}
@@ -288,13 +301,13 @@ class MicroPythonBoard {
       const hexArray = contentString.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = 256
+      const chunkSize = 128
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
         data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await this.serial.write(line)
+        await writeAndDrain(this.serial, line)
         await sleep(100)
       }
       return this.exit_raw_repl()
@@ -308,20 +321,19 @@ class MicroPythonBoard {
       content = fixLineBreak(content)
       await this.enter_raw_repl()
       let output = await this.exec_raw({
-        command: `f=open('${dest}','w')\nw=f.write`,
-        data_consumer: (d) => console.log('data consumer', d)
+        command: `f=open('${dest}','w')\nw=f.write`
       })
       await sleep(100)
       const hexArray = content.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = 256
+      const chunkSize = 128
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
-        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await this.serial.write(line)
+        data_consumer( parseInt((i / hexArray.length) * 100) + '%' )
+        await writeAndDrain(this.serial, line)
         await sleep(100)
       }
       return this.exit_raw_repl()
