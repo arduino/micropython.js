@@ -17,20 +17,6 @@ function fixLineBreak(str) {
   return str.replace(/\r\n/g, '\n')
 }
 
-function writeAndDrain(serial, data) {
-  // https://serialport.io/docs/api-stream#drain-example
-  return new Promise((resolve, reject) => {
-    serial.write(data)
-    serial.drain((err) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve()
-      }
-    })
-  })
-}
-
 class MicroPythonBoard {
   constructor() {
     this.device = null
@@ -40,6 +26,20 @@ class MicroPythonBoard {
 
   listPorts() {
     return SerialPort.list()
+  }
+
+  writeAndDrain(data) {
+    // https://serialport.io/docs/api-stream#drain-example
+    return new Promise((resolve, reject) => {
+      this.serial.write(data)
+      this.serial.drain((err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
   }
 
   async open(device) {
@@ -108,11 +108,11 @@ class MicroPythonBoard {
   enter_raw_repl(timeout) {
     return new Promise(async (resolve, reject) => {
       // ctrl-C twice: interrupt any running program
-      await this.serial.write(Buffer.from(`\r\x03\x03`))
+      await this.writeAndDrain(Buffer.from(`\r\x03\x03`))
       // flush input
       await this.serial.flush()
       // ctrl-A: enter raw REPL
-      await this.serial.write(Buffer.from(`\r\x01`))
+      await this.writeAndDrain(Buffer.from(`\r\x01`))
 
       let data = await this.read_until({
         ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n>`),
@@ -131,7 +131,7 @@ class MicroPythonBoard {
   async exit_raw_repl() {
     if (this.in_raw_repl) {
       // ctrl-B: enter friendly REPL
-      await this.serial.write(Buffer.from(`\r\x02`))
+      await this.writeAndDrain(Buffer.from(`\r\x02`))
       this.in_raw_repl = false
     }
     return Promise.resolve()
@@ -186,7 +186,7 @@ class MicroPythonBoard {
   }
 
   async eval(k) {
-    return await this.serial.write(Buffer.from(k))
+    return this.serial.write(Buffer.from(k))
   }
 
   async stop() {
@@ -307,7 +307,7 @@ class MicroPythonBoard {
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
         data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await writeAndDrain(this.serial, line)
+        await this.writeAndDrain(line)
         await sleep(100)
       }
       return this.exit_raw_repl()
@@ -333,7 +333,7 @@ class MicroPythonBoard {
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
         data_consumer( parseInt((i / hexArray.length) * 100) + '%' )
-        await writeAndDrain(this.serial, line)
+        await this.writeAndDrain(line)
         await sleep(100)
       }
       return this.exit_raw_repl()
