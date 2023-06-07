@@ -22,10 +22,30 @@ class MicroPythonBoard {
     this.device = null
     this.serial = null
     this.in_raw_repl = false
+    this.chunk_size = 200
+    this.chunk_sleep = 100
   }
 
   listPorts() {
     return SerialPort.list()
+  }
+
+  list_ports() { // backward compatibility
+    return this.listPorts()
+  }
+
+  write_and_drain(data) {
+    // https://serialport.io/docs/api-stream#drain-example
+    return new Promise((resolve, reject) => {
+      this.serial.write(data)
+      this.serial.drain((err) => {
+        if (err) {
+          reject(err)
+        } else {
+          resolve()
+        }
+      })
+    })
   }
 
   async open(device) {
@@ -94,11 +114,11 @@ class MicroPythonBoard {
   enter_raw_repl(timeout) {
     return new Promise(async (resolve, reject) => {
       // ctrl-C twice: interrupt any running program
-      await this.serial.write(Buffer.from(`\r\x03\x03`))
+      await this.write_and_drain(Buffer.from(`\r\x03\x03`))
       // flush input
       await this.serial.flush()
       // ctrl-A: enter raw REPL
-      await this.serial.write(Buffer.from(`\r\x01`))
+      await this.write_and_drain(Buffer.from(`\r\x01`))
 
       let data = await this.read_until({
         ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n>`),
@@ -117,7 +137,7 @@ class MicroPythonBoard {
   async exit_raw_repl() {
     if (this.in_raw_repl) {
       // ctrl-B: enter friendly REPL
-      await this.serial.write(Buffer.from(`\r\x02`))
+      await this.write_and_drain(Buffer.from(`\r\x02`))
       this.in_raw_repl = false
     }
     return Promise.resolve()
@@ -134,7 +154,6 @@ class MicroPythonBoard {
       resolve(data)
     })
   }
-
 
   exec_raw_no_follow(options) {
     const { timeout = null, command = '' } = options || {}
@@ -173,7 +192,7 @@ class MicroPythonBoard {
   }
 
   async eval(k) {
-    return await this.serial.write(Buffer.from(k))
+    return this.serial.write(Buffer.from(k))
   }
 
   async stop() {
@@ -288,14 +307,14 @@ class MicroPythonBoard {
       const hexArray = contentString.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = 256
+      const chunkSize = this.chunk_size
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
         data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await this.serial.write(line)
-        await sleep(100)
+        await this.write_and_drain(line)
+        await sleep(this.chunk_sleep)
       }
       return this.exit_raw_repl()
     }
@@ -308,21 +327,20 @@ class MicroPythonBoard {
       content = fixLineBreak(content)
       await this.enter_raw_repl()
       let output = await this.exec_raw({
-        command: `f=open('${dest}','w')\nw=f.write`,
-        data_consumer: (d) => console.log('data consumer', d)
+        command: `f=open('${dest}','w')\nw=f.write`
       })
       await sleep(100)
       const hexArray = content.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = 256
+      const chunkSize = this.chunk_size
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
         let line = `w(bytes([${bytes.join(',')}]))\x04`
-        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await this.serial.write(line)
-        await sleep(100)
+        data_consumer( parseInt((i / hexArray.length) * 100) + '%' )
+        await this.write_and_drain(line)
+        await sleep(await sleep(this.chunk_sleep))
       }
       return this.exit_raw_repl()
     } else {
