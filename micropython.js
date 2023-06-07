@@ -22,7 +22,7 @@ class MicroPythonBoard {
     this.device = null
     this.serial = null
     this.in_raw_repl = false
-    this.chunk_size = 256
+    this.chunk_size = 200
     this.chunk_sleep = 100
   }
 
