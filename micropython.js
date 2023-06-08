@@ -121,11 +121,11 @@ class MicroPythonBoard {
       await this.serial.write(Buffer.from(`\r\x01`))
 
       let data = await this.read_until({
-        ending: Buffer.from(`raw REPL; CTRL-B to exit`),
+        ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n`),
         timeout: timeout
       })
 
-      if (data.indexOf(`raw REPL; CTRL-B to exit`) !== -1) {
+      if (data.indexOf(`raw REPL; CTRL-B to exit\r\n`) !== -1) {
         this.in_raw_repl = true
         return resolve()
       } else {
