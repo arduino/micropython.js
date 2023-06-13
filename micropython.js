@@ -114,18 +114,18 @@ class MicroPythonBoard {
   enter_raw_repl(timeout) {
     return new Promise(async (resolve, reject) => {
       // ctrl-C twice: interrupt any running program
-      await this.write_and_drain(Buffer.from(`\r\x03\x03`))
+      await this.serial.write(Buffer.from(`\r\x03\x03`))
       // flush input
       await this.serial.flush()
       // ctrl-A: enter raw REPL
-      await this.write_and_drain(Buffer.from(`\r\x01`))
+      await this.serial.write(Buffer.from(`\r\x01`))
 
       let data = await this.read_until({
-        ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n>`),
+        ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n`),
         timeout: timeout
       })
 
-      if (data.indexOf(`raw REPL; CTRL-B to exit\r\n>`) !== -1) {
+      if (data.indexOf(`raw REPL; CTRL-B to exit\r\n`) !== -1) {
         this.in_raw_repl = true
         return resolve()
       } else {
@@ -137,7 +137,7 @@ class MicroPythonBoard {
   async exit_raw_repl() {
     if (this.in_raw_repl) {
       // ctrl-B: enter friendly REPL
-      await this.write_and_drain(Buffer.from(`\r\x02`))
+      await this.serial.write(Buffer.from(`\r\x02`))
       this.in_raw_repl = false
     }
     return Promise.resolve()
