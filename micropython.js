@@ -169,8 +169,8 @@ class MicroPythonBoard {
       })
 
       // Write command using standard raw REPL, 256 bytes every 10ms.
-      for (let i = 0; i < command.length; i += 256) {
-        const slice = Buffer.from(command.slice(i, i+256))
+      for (let i = 0; i < command.length; i += this.chunk_size) {
+        const slice = Buffer.from(command.slice(i, i+this.chunk_size))
         await this.serial.write(slice)
         await sleep(10)
       }
