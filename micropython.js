@@ -172,7 +172,7 @@ class MicroPythonBoard {
       for (let i = 0; i < command.length; i += this.chunk_size) {
         const slice = Buffer.from(command.slice(i, i+this.chunk_size))
         await this.serial.write(slice)
-        await sleep(10)
+        await sleep(this.chunk_sleep)
       }
       // Execute
       await this.serial.write(Buffer.from(`\x04`))
