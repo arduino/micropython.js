@@ -216,11 +216,10 @@ class MicroPythonBoard {
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: content
-      })
+      const output = await this.exec_raw({ command: content })
       data_consumer(output)
-      return this.exit_raw_repl()
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
     }
     return Promise.reject()
   }
