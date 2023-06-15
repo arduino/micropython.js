@@ -182,7 +182,11 @@ class MicroPythonBoard {
   }
 
   exec_raw(options) {
-    const { timeout = null, command = '', data_consumer = () => false } = options || {}
+    const {
+      timeout = null,
+      command = '',
+      data_consumer = () => false
+    } = options || {}
     this.exec_raw_no_follow({
       timeout: timeout,
       command: command,
