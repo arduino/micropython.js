@@ -1,28 +1,24 @@
 const Board = require('../micropython.js')
 
-console.log('connect')
-let board = new Board()
-board.open(process.env.PORT || '/dev/tty.usbmodem141101')
-  .then(async () => {
-    try {
-      // Check for boot.py (probably exists)
-      let output = await board.fs_exists('boot.py')
-      if (output) {
-        console.log('boot.py exists')
-      } else {
-        console.log('boot.py does not exists')
-      }
+async function main() {
+  const board = new Board()
+  await board.open(process.env.PORT)
 
-      // Check for xxx (probably won't exist)
-      output = await board.fs_exists('xxx')
-      if (output) {
-        console.log('xxx exists')
-      } else {
-        console.log('xxx does not exists')
-      }
-    } catch(e) {
-      console.log('error', e)
-    }
-    board.close()
-    console.log('disconnect')
-  })
+  const testFileExists = await board.fs_exists('test.py')
+  if (testFileExists) {
+    console.log('test.py exists')
+  } else {
+    console.log('test.py does not exists')
+  }
+
+  const fakeFileExists = await board.fs_exists('xxxxxxxxxxx')
+  if (fakeFileExists) {
+    console.log('xxxxxxxxxxx exists')
+  } else {
+    console.log('xxxxxxxxxxx does not exists')
+  }
+
+  board.close()
+}
+
+main()

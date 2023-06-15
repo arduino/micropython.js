@@ -1,47 +1,28 @@
 const Board = require('../micropython.js')
 
-let board = new Board()
-
-board.open(process.env.PORT || '/dev/tty.usbmodem141101')
-  .then(() => {
-    console.log('connected')
-    console.log('entering raw repl')
-    return board.enter_raw_repl()
-  })
-  .then(async () => {
-    console.log('executing raw')
-    return board.exec_raw({
-      command: `
-"""
-Warning: You may need to change the pin number
-"""
+const command = `from time import sleep
 from machine import Pin
-from time import sleep
-pin = Pin(6, Pin.OUT)
+pin = Pin(2, Pin.OUT)
+print("start OK \\r\\n")
 for i in range(0, 10):
-    pin.on()
-    sleep(0.1)
-    pin.off()
-    sleep(0.1)
-    print('duh')
+  print('duh')
+  pin.on()
+  sleep(0.1)
+  pin.off()
+  sleep(0.1)
 `
-    })
-  })
-  .then((out) => {
-    console.log('output', out)
-    console.log('exiting raw repl')
-    return board.exit_raw_repl()
-  })
-  .then(() => {
-    console.log('closing connection')
-    return board.close()
-  })
-  .then(() => {
-    console.log('disconnected')
-  })
-  .catch((err) => {
-    console.log('error')
-    console.log(err)
-    board.exit_raw_repl(true)
-    board.close()
-  })
+
+async function main() {
+  const board = new Board()
+  await board.open(process.env.PORT)
+  await board.enter_raw_repl()
+  console.log('exec raw:')
+  console.log(command)
+  const output = await board.exec_raw({ command })
+  console.log('output:')
+  console.log(output)
+  await board.exit_raw_repl()
+  await board.close()
+}
+
+main()

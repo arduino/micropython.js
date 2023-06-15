@@ -1,14 +1,12 @@
 const Board = require('../micropython.js')
 
-console.log('connect')
-let board = new Board()
-board.open(process.env.PORT || '/dev/tty.usbmodem141101')
-  .then(async () => {
-    try {
-      await board.fs_rm('test.py')
-      console.log('disconnect')
-    } catch(e) {
-      console.log('error', e)
-    }
-    board.close()
-  })
+async function main() {
+  const board = new Board()
+  await board.open(process.env.PORT)
+  console.log('removing file from board')
+  await board.fs_rm('test.py')
+  console.log('done')
+  board.close()
+}
+
+main()

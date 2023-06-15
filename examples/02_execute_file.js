@@ -1,16 +1,13 @@
 const Board = require('../micropython.js')
 
-console.log('connect')
+async function main() {
+  const board = new Board()
+  await board.open(process.env.PORT)
+  console.log('executing file')
+  const output = await board.execfile('./test.py')
+  console.log('output')
+  console.log(output)
+  board.close()
+}
 
-let board = new Board()
-
-board.open(process.env.PORT || '/dev/tty.usbmodem141101')
-  .then(async () => {
-    try {
-      await board.execfile('./test.py')
-      console.log('disconnect')
-    } catch(e) {
-      console.log('error', e)
-    }
-      board.close()
-  })
+main()
