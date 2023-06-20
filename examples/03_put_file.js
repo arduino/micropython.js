@@ -6,7 +6,7 @@ async function main() {
   console.log('sending file to board')
   await board.fs_put('./big_file.py', 'test.py', console.log)
   console.log('done')
-  board.close()
+  await board.close()
 }
 
 main()

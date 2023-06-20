@@ -18,7 +18,7 @@ async function main() {
     console.log('xxxxxxxxxxx does not exist')
   }
 
-  board.close()
+  await board.close()
 }
 
 main()

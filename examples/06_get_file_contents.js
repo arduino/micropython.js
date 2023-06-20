@@ -6,7 +6,7 @@ async function main() {
   const output = await board.fs_cat('test.py')
   console.log('file contents:')
   console.log(output)
-  board.close()
+  await board.close()
 }
 
 main()

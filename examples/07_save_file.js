@@ -24,7 +24,7 @@ async function main() {
   console.log('saving content to file')
   await board.fs_save(content, 'test.py')
   console.log('done')
-  board.close()
+  await board.close()
 }
 
 main()

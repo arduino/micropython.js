@@ -4,7 +4,7 @@ This is an partial port of [pyboard.py](https://docs.micropython.org/en/latest/r
 
 ## Basic usage
 
-```
+```js
 const Board = require('micropython.js')
 // Instantiate board class
 const board = new Board()
@@ -26,7 +26,7 @@ const rootFiles = await board.fs_ils()
 console.log('files at /', rootFiles)
 
 // Close serial
-board.close()
+await board.close()
 ```
 
 ## Examples

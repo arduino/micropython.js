@@ -7,7 +7,7 @@ async function main() {
   const output = await board.execfile('./test.py')
   console.log('output')
   console.log(output)
-  board.close()
+  await board.close()
 }
 
 main()

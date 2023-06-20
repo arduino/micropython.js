@@ -6,7 +6,7 @@ async function main() {
   console.log('removing file from board')
   await board.fs_rm('test.py')
   console.log('done')
-  board.close()
+  await board.close()
 }
 
 main()

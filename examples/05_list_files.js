@@ -9,7 +9,7 @@ async function main() {
   const libFiles = await board.fs_ils('lib')
   console.log('files at /lib')
   console.log(libFiles)
-  board.close()
+  await board.close()
 }
 
 main()
