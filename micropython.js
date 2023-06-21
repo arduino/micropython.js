@@ -100,10 +100,10 @@ class MicroPythonBoard {
     this.serial.pause()
     let o
     await this.serial.write(Buffer.from(cmd))
-    await sleep(20)
+    await sleep(10)
     if(expect) o = await this.read_until(expect, data_consumer)
     await this.serial.flush()
-    await sleep(20)
+    await sleep(10)
     this.serial.resume()
     return o
   }
