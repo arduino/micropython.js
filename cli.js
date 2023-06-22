@@ -34,9 +34,10 @@ function ensurePort(port) {
 
 const listPorts = (args) => {
   const board = new Board()
-  return board.listPorts()
+  return board.list_ports()
   .then((ports) => {
-    log('available ports', ports)
+    const boards = ports.filter(p => p.vendorId && p.productId)
+    log('available ports', boards)
     return Promise.resolve()
   })
 }
