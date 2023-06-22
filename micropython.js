@@ -83,8 +83,6 @@ class MicroPythonBoard {
           buff += o.toString()
           if (data_consumer) {
             data_consumer(o.toString())
-          } else {
-            // console.log('data', o.toString())
           }
         }
         if (buff.indexOf(ending) !== -1) {
