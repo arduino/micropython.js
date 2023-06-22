@@ -98,10 +98,16 @@ class MicroPythonBoard {
 
   async write_and_read_until(cmd, expect, data_consumer) {
     this.serial.pause()
+    const chunkSize = 128
+    for (let i = 0; i < cmd.length; i+=chunkSize) {
+      const s = cmd.slice(i, i+chunkSize)
+      await this.serial.write(Buffer.from(s))
+      await sleep(10)
+    }
     let o
-    await this.serial.write(Buffer.from(cmd))
-    await sleep(10)
-    if(expect) o = await this.read_until(expect, data_consumer)
+    if(expect) {
+      o = await this.read_until(expect, data_consumer)
+    }
     await this.serial.flush()
     await sleep(10)
     this.serial.resume()
@@ -127,6 +133,25 @@ class MicroPythonBoard {
     await this.write_and_read_until(cmd)
     const out = await this.write_and_read_until('\x04', '\x04>', data_consumer)
     return Promise.resolve(out)
+  }
+
+  async execfile(filePath, data_consumer) {
+    data_consumer = data_consumer || function() {}
+    if (filePath) {
+      const content = fs.readFileSync(path.resolve(filePath))
+      await this.enter_raw_repl()
+      const output = await this.exec_raw(content.toString(), data_consumer)
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
+    }
+    return Promise.reject()
+  }
+
+  async run(code, data_consumer) {
+    data_consumer = data_consumer || function() {}
+    await this.enter_raw_repl()
+    const output = await this.exec_raw(code || '#', data_consumer)
+    await this.exit_raw_repl()
   }
 
   async eval(k) {
