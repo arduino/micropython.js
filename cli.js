@@ -198,7 +198,8 @@ const operations = {
   '--getfile': getFile,
   '--removefile': removeFile,
   '--removefolder': removeFolder,
-  '--verbose': () => false
+  '--verbose': () => false,
+  '--help': () => console.log(Object.keys(operations))
 }
 
 let args = extractArguments(process.argv)
