@@ -152,6 +152,7 @@ class MicroPythonBoard {
     await this.enter_raw_repl()
     const output = await this.exec_raw(code || '#', data_consumer)
     await this.exit_raw_repl()
+    return Promise.resolve(output)
   }
 
   async eval(k) {
