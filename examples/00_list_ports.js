@@ -1,8 +1,9 @@
 const Board = require('../micropython.js')
 
-let board = new Board()
+async function main() {
+  const board = new Board()
+  const ports = await board.listPorts()
+  console.log('available ports', ports)
+}
 
-board.listPorts()
-  .then((ports) => {
-    console.log('available ports', ports)
-  })
+main()

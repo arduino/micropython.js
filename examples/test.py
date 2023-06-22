@@ -2,13 +2,13 @@
 Test
 """
 
-from machine import Pin
 from time import sleep
-pin = Pin(6, Pin.OUT)
-print("start OK\r\n")
+from machine import Pin
+pin = Pin(2, Pin.OUT)
+print("start OK \r\n")
 for i in range(0, 10):
-    pin.on()
-    sleep(0.1)
-    pin.off()
-    sleep(0.1)
-    print('duh')
+  print('duh')
+  pin.on()
+  sleep(0.1)
+  pin.off()
+  sleep(0.1)

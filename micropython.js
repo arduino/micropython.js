@@ -168,11 +168,11 @@ class MicroPythonBoard {
         timeout: timeout,
       })
 
-      // Write command using standard raw REPL, 256 bytes every 10ms.
-      for (let i = 0; i < command.length; i += 256) {
-        const slice = Buffer.from(command.slice(i, i+256))
+      // Write command using standard raw REPL
+      for (let i = 0; i < command.length; i += this.chunk_size) {
+        const slice = Buffer.from(command.slice(i, i+this.chunk_size))
         await this.serial.write(slice)
-        await sleep(10)
+        await sleep(this.chunk_sleep)
       }
       // Execute
       await this.serial.write(Buffer.from(`\x04`))
@@ -182,7 +182,11 @@ class MicroPythonBoard {
   }
 
   exec_raw(options) {
-    const { timeout = null, command = '', data_consumer = () => false } = options || {}
+    const {
+      timeout = null,
+      command = '',
+      data_consumer = () => false
+    } = options || {}
     this.exec_raw_no_follow({
       timeout: timeout,
       command: command,
@@ -212,11 +216,10 @@ class MicroPythonBoard {
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: content
-      })
+      const output = await this.exec_raw({ command: content })
       data_consumer(output)
-      return this.exit_raw_repl()
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
     }
     return Promise.reject()
   }

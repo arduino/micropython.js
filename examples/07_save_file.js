@@ -2,30 +2,29 @@ const Board = require('../micropython.js')
 
 let content = `
 """
-Blinky
+Test
 """
-from machine import Pin
+
 from time import sleep
-# Nano Connect rp2040 internal LED
-led = Pin(6, Pin.OUT)
-while True:
- print('on')
- led.on()
- sleep(0.25)
- print('off')
- led.off()
- sleep(0.25)
+from machine import Pin
+pin = Pin(2, Pin.OUT)
+print("start OK \r\n")
+for i in range(0, 10):
+  print('duh')
+  pin.on()
+  sleep(0.1)
+  pin.off()
+  sleep(0.1)
+
 `
 
-console.log('connect')
-let board = new Board()
-board.open(process.env.PORT || '/dev/tty.usbmodem141101')
-  .then(async () => {
-    try {
-      await board.fs_save(content, 'test.py')
-      console.log('disconnect')
-    } catch(e) {
-      console.log('error', e)
-    }
-    board.close()
-  })
+async function main() {
+  const board = new Board()
+  await board.open(process.env.PORT)
+  console.log('saving content to file')
+  await board.fs_save(content, 'test.py')
+  console.log('done')
+  await board.close()
+}
+
+main()
