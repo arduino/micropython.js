@@ -1,5 +1,4 @@
 const { SerialPort } = require('serialport')
-const { ReadlineParser } = require('@serialport/parser-readline')
 const fs = require('fs')
 const path = require('path')
 
@@ -17,40 +16,27 @@ function fixLineBreak(str) {
   return str.replace(/\r\n/g, '\n')
 }
 
+function extract(out) {
+  /*
+   * Message ($msg) will come out following this template:
+   * "OK${msg}\x04\x04>"
+   */
+  return out.slice(2, -3).trim()
+}
+
 class MicroPythonBoard {
   constructor() {
-    this.device = null
+    this.port = null
     this.serial = null
-    this.in_raw_repl = false
-    this.chunk_size = 200
-    this.chunk_sleep = 100
   }
 
-  listPorts() {
+  list_ports() {
     return SerialPort.list()
   }
 
-  list_ports() { // backward compatibility
-    return this.listPorts()
-  }
-
-  write_and_drain(data) {
-    // https://serialport.io/docs/api-stream#drain-example
-    return new Promise((resolve, reject) => {
-      this.serial.write(data)
-      this.serial.drain((err) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve()
-        }
-      })
-    })
-  }
-
-  async open(device) {
-    if (device) {
-      this.device = device
+  async open(port) {
+    if (port) {
+      this.port = port
     } else {
       return Promise.reject(
         new Error(`No device specified`)
@@ -62,11 +48,12 @@ class MicroPythonBoard {
     }
 
     this.serial = new SerialPort({
-      path: this.device,
+      path: this.port,
 			baudRate: 115200,
       lock: false,
 			autoOpen: false
 		})
+    this.serial.pause()
 
     return new Promise((resolve, reject) => {
       this.serial.open(async (err) => {
@@ -87,128 +74,63 @@ class MicroPythonBoard {
     }
   }
 
-  read_until(options) {
-    const {
-      ending = `\n`,
-      timeout = null,
-      data_consumer = () => false
-    } = options || {}
-    const parser = this.serial.pipe(
-      new ReadlineParser({ delimiter: ending })
-    )
+  read_until(ending, data_consumer) {
     return new Promise((resolve, reject) => {
-      let waiting = 0
-      if (timeout) {
-        waiting = setTimeout(() => {
-          reject(new Error(`Couldn't find ending: ${ending}`))
-        }, timeout)
+      let buff = ''
+      const fn = async () => {
+        const o = await this.serial.read()
+        if (o) {
+          buff += o.toString()
+          if (data_consumer) {
+            data_consumer(o.toString())
+          }
+        }
+        if (buff.indexOf(ending) !== -1) {
+          this.serial.removeListener('readable', fn)
+          resolve(buff)
+        }
       }
-      parser.once('data', (data) => {
-        data_consumer(data)
-        clearTimeout(waiting)
-        resolve(data + ending)
-      })
+      this.serial.on('readable', fn)
     })
   }
 
-  enter_raw_repl(timeout) {
-    return new Promise(async (resolve, reject) => {
-      // ctrl-C twice: interrupt any running program
-      await this.serial.write(Buffer.from(`\r\x03\x03`))
-      // flush input
-      await this.serial.flush()
-      // ctrl-A: enter raw REPL
-      await this.serial.write(Buffer.from(`\r\x01`))
+  async write_and_read_until(cmd, expect, data_consumer) {
+    this.serial.pause()
+    const chunkSize = 128
+    for (let i = 0; i < cmd.length; i+=chunkSize) {
+      const s = cmd.slice(i, i+chunkSize)
+      await this.serial.write(Buffer.from(s))
+      await sleep(10)
+    }
+    let o
+    if(expect) {
+      o = await this.read_until(expect, data_consumer)
+    }
+    await this.serial.flush()
+    await sleep(10)
+    this.serial.resume()
+    return o
+  }
 
-      let data = await this.read_until({
-        ending: Buffer.from(`raw REPL; CTRL-B to exit\r\n`),
-        timeout: timeout
-      })
+  async get_prompt() {
+    const out = await this.write_and_read_until(`\r\x02\x03`, '\r\n>>>')
+    return Promise.resolve(out)
+  }
 
-      if (data.indexOf(`raw REPL; CTRL-B to exit\r\n`) !== -1) {
-        this.in_raw_repl = true
-        return resolve()
-      } else {
-        return reject(new Error(`Couldn't enter raw REPL mode`))
-      }
-    })
+  async enter_raw_repl() {
+    const out = await this.write_and_read_until(`\x01`, `raw REPL; CTRL-B to exit`)
+    return Promise.resolve(out)
   }
 
   async exit_raw_repl() {
-    if (this.in_raw_repl) {
-      // ctrl-B: enter friendly REPL
-      await this.serial.write(Buffer.from(`\r\x02`))
-      this.in_raw_repl = false
-    }
-    return Promise.resolve()
+    const out = await this.write_and_read_until(`\x02`, '\r\n>>>')
+    return Promise.resolve(out)
   }
 
-  follow(options) {
-    const { timeout = null } = options || {}
-    return new Promise(async (resolve, reject) => {
-      // wait for normal output
-      const data = await this.read_until({
-        ending: Buffer.from(`\x04`),
-        timeout: timeout
-      })
-      resolve(data)
-    })
-  }
-
-  exec_raw_no_follow(options) {
-    const { timeout = null, command = '' } = options || {}
-    return new Promise(async (resolve, reject) => {
-      // Dismiss any data with ctrl-C
-      await this.serial.write(Buffer.from(`\x03`))
-      // Soft reboot
-      await this.serial.write(Buffer.from(`\x04`))
-      // Check if we have a prompt
-      const data = await this.read_until({
-        ending: Buffer.from(`>`),
-        timeout: timeout,
-      })
-
-      // Write command using standard raw REPL
-      for (let i = 0; i < command.length; i += this.chunk_size) {
-        const slice = Buffer.from(command.slice(i, i+this.chunk_size))
-        await this.serial.write(slice)
-        await sleep(this.chunk_sleep)
-      }
-      // Execute
-      await this.serial.write(Buffer.from(`\x04`))
-      resolve()
-    })
-
-  }
-
-  exec_raw(options) {
-    const {
-      timeout = null,
-      command = '',
-      data_consumer = () => false
-    } = options || {}
-    this.exec_raw_no_follow({
-      timeout: timeout,
-      command: command,
-      data_consumer: data_consumer
-    })
-    return this.follow({ timeout })
-  }
-
-  async eval(k) {
-    return this.serial.write(Buffer.from(k))
-  }
-
-  async stop() {
-    // Dismiss any data with ctrl-C
-    await this.serial.write(Buffer.from(`\x03`))
-  }
-
-  async reset() {
-    // Dismiss any data with ctrl-C
-    await this.serial.write(Buffer.from(`\x03`))
-    // Soft reboot
-    await this.serial.write(Buffer.from(`\x04`))
+  async exec_raw(cmd, data_consumer) {
+    await this.write_and_read_until(cmd)
+    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer)
+    return Promise.resolve(out)
   }
 
   async execfile(filePath, data_consumer) {
@@ -216,12 +138,38 @@ class MicroPythonBoard {
     if (filePath) {
       const content = fs.readFileSync(path.resolve(filePath))
       await this.enter_raw_repl()
-      const output = await this.exec_raw({ command: content })
-      data_consumer(output)
+      const output = await this.exec_raw(content.toString(), data_consumer)
       await this.exit_raw_repl()
       return Promise.resolve(output)
     }
     return Promise.reject()
+  }
+
+  async run(code, data_consumer) {
+    data_consumer = data_consumer || function() {}
+    await this.enter_raw_repl()
+    const output = await this.exec_raw(code || '#', data_consumer)
+    await this.exit_raw_repl()
+    return Promise.resolve(output)
+  }
+
+  async eval(k) {
+    await this.serial.write(Buffer.from(k))
+    return Promise.resolve()
+  }
+
+  async stop() {
+    // Dismiss any data with ctrl-C
+    await this.serial.write(Buffer.from(`\x03`))
+    return Promise.resolve()
+  }
+
+  async reset() {
+    // Dismiss any data with ctrl-C
+    await this.serial.write(Buffer.from(`\x03`))
+    // Soft reboot
+    await this.serial.write(Buffer.from(`\x04`))
+    return Promise.resolve()
   }
 
   async fs_exists(filePath) {
@@ -232,12 +180,10 @@ class MicroPythonBoard {
         command += `except OSError:\n`
         command += `  print(0)\n`
     await this.enter_raw_repl()
-    let output = await this.exec_raw({ command: command })
+    let output = await this.exec_raw(command)
     await this.exit_raw_repl()
-    // Extract output
-    output = output.split('OK')
-    let result = output[2] || ''
-    return Promise.resolve(result[0] === '1')
+    const exists = extract(output) == '1'
+    return Promise.resolve(exists)
   }
 
   async fs_ls(folderPath) {
@@ -248,14 +194,12 @@ class MicroPythonBoard {
         command += `except OSError:\n`
         command += `  print([])\n`
     await this.enter_raw_repl()
-    let output = await this.exec_raw({ command: command })
+    let output = await this.exec_raw(command)
     await this.exit_raw_repl()
+    output = extract(output)
     // Convert text output to js array
     output = output.replace(/'/g, '"')
-    output = output.split('OK')
-    let files = output[2] || ''
-    files = files.slice(0, files.indexOf(']')+1)
-    files = JSON.parse(files)
+    const files = JSON.parse(output)
     return Promise.resolve(files)
   }
 
@@ -271,27 +215,25 @@ class MicroPythonBoard {
         command += `except OSError:\n`
         command += `  print([])\n`
     await this.enter_raw_repl()
-    let output = await this.exec_raw({ command: command })
+    let output = await this.exec_raw(command)
     await this.exit_raw_repl()
     // Convert text output to js array
+    output = extract(output)
     output = output.replace(/'/g, '"')
     output = output.split('OK')
-    let files = output[2] || ''
-    files = files.slice(0, files.length-1)
-    files = JSON.parse(files)
+    let files = JSON.parse(output)
     return Promise.resolve(files)
   }
 
   async fs_cat(filePath) {
     if (filePath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
-      })
+      let output = await this.exec_raw(
+        `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+      )
       await this.exit_raw_repl()
-      const outputArray = output.split('raw REPL; CTRL-B to exit\r\n>OK')
-      const content = outputArray[1].slice(0, -1)
-      return Promise.resolve(content)
+      output = extract(output)
+      return Promise.resolve(output)
     }
     return Promise.reject(new Error(`Path to file was not specified`))
   }
@@ -300,26 +242,25 @@ class MicroPythonBoard {
     data_consumer = data_consumer || function() {}
     if (src && dest) {
       const contentBuffer = fs.readFileSync(path.resolve(src))
-      await this.enter_raw_repl()
-      let output = await this.exec_raw({
-        command: `f=open('${dest}','w')\nw=f.write`
-      })
-      await sleep(100)
       let contentString = contentBuffer.toString()
       contentString = fixLineBreak(contentString)
       const hexArray = contentString.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = this.chunk_size
+      let out = ''
+      out += await this.enter_raw_repl()
+      out += await this.exec_raw(`f=open('${dest}','w')\nw=f.write`)
+      const chunkSize = 48
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
-        let line = `w(bytes([${bytes.join(',')}]))\x04`
+        let line = `w(bytes([${bytes.join(',')}]))`
+        out += await this.exec_raw(line)
         data_consumer( parseInt((i / hexArray.length) * 100) + '%')
-        await this.write_and_drain(line)
-        await sleep(this.chunk_sleep)
       }
-      return this.exit_raw_repl()
+      out += await this.exec_raw(`f.close()`)
+      out += await this.exit_raw_repl()
+      return Promise.resolve(out)
     }
     return Promise.reject(new Error(`Must specify source and destination paths`))
   }
@@ -327,25 +268,24 @@ class MicroPythonBoard {
   async fs_save(content, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
     if (content && dest) {
-      content = fixLineBreak(content)
-      await this.enter_raw_repl()
-      let output = await this.exec_raw({
-        command: `f=open('${dest}','w')\nw=f.write`
-      })
-      await sleep(100)
-      const hexArray = content.split('').map(
+      let contentString = fixLineBreak(content)
+      const hexArray = contentString.split('').map(
         c => c.charCodeAt(0).toString(16).padStart(2, '0')
       )
-      const chunkSize = this.chunk_size
+      let out = ''
+      out += await this.enter_raw_repl()
+      out += await this.exec_raw(`f=open('${dest}','w')\nw=f.write`)
+      const chunkSize = 48
       for (let i = 0; i < hexArray.length; i+= chunkSize) {
         let slice = hexArray.slice(i, i+chunkSize)
         let bytes = slice.map(h => `0x${h}`)
-        let line = `w(bytes([${bytes.join(',')}]))\x04`
-        data_consumer( parseInt((i / hexArray.length) * 100) + '%' )
-        await this.write_and_drain(line)
-        await sleep(await sleep(this.chunk_sleep))
+        let line = `w(bytes([${bytes.join(',')}]))`
+        out += await this.exec_raw(line)
+        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
       }
-      return this.exit_raw_repl()
+      out += await this.exec_raw(`f.close()`)
+      out += await this.exit_raw_repl()
+      return Promise.resolve(out)
     } else {
       return Promise.reject(new Error(`Must specify content and destination path`))
     }
@@ -354,10 +294,11 @@ class MicroPythonBoard {
   async fs_mkdir(filePath) {
     if (filePath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: `import uos\nuos.mkdir('${filePath}')`
-      })
-      return this.exit_raw_repl()
+      const output = await this.exec_raw(
+        `import uos\nuos.mkdir('${filePath}')`
+      )
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
     }
     return Promise.reject()
   }
@@ -370,8 +311,9 @@ class MicroPythonBoard {
           command += `except OSError:\n`
           command += `  print(0)\n`
       await this.enter_raw_repl()
-      const output = await this.exec_raw({ command: command })
-      return this.exit_raw_repl()
+      const output = await this.exec_raw(command)
+      await this.exit_raw_repl()
+      return Promise.resolve(output)
     }
     return Promise.reject()
   }
@@ -384,7 +326,7 @@ class MicroPythonBoard {
           command += `except OSError:\n`
           command += `  print(0)\n`
       await this.enter_raw_repl()
-      const output = await this.exec_raw({ command: command })
+      const output = await this.exec_raw(command)
       return this.exit_raw_repl()
     }
     return Promise.reject()
@@ -393,9 +335,9 @@ class MicroPythonBoard {
   async fs_rename(oldFilePath, newFilePath) {
     if (oldFilePath && newFilePath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
-      })
+      const output = await this.exec_raw(
+        `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
+      )
       return this.exit_raw_repl()
     }
     return Promise.reject()
