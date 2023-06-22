@@ -336,9 +336,9 @@ class MicroPythonBoard {
   async fs_rename(oldFilePath, newFilePath) {
     if (oldFilePath && newFilePath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw({
-        command: `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
-      })
+      const output = await this.exec_raw(
+        `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
+      )
       return this.exit_raw_repl()
     }
     return Promise.reject()
