@@ -166,7 +166,7 @@ async function main() {
 
 
 
-  //
+  // REFERENCE OF A FULL FEATURE TEST:
   // async function main() {
   //   const board = new Board()
   //   await board.open(process.env.PORT || '/dev/ttyACM0')
