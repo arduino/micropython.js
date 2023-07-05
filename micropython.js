@@ -164,6 +164,7 @@ class MicroPythonBoard {
         return resolve(output)
       } catch (e) {
         reject(e)
+        this.reject_run = null
       }
     })
   }
