@@ -153,7 +153,7 @@ class MicroPythonBoard {
     data_consumer = data_consumer || function() {}
     return new Promise(async (resolve, reject) => {
       if (this.reject_run) {
-        this.reject_run('re run')
+        this.reject_run(new Error('re-run'))
         this.reject_run = null
       }
       this.reject_run = reject
@@ -164,6 +164,7 @@ class MicroPythonBoard {
         return resolve(output)
       } catch (e) {
         reject(e)
+        this.reject_run = null
       }
     })
   }
@@ -175,7 +176,7 @@ class MicroPythonBoard {
 
   async stop() {
     if (this.reject_run) {
-      this.reject_run('pre stop')
+      this.reject_run(new Error('pre stop'))
       this.reject_run = null
     }
     // Dismiss any data with ctrl-C
@@ -185,7 +186,7 @@ class MicroPythonBoard {
 
   async reset() {
     if (this.reject_run) {
-      this.reject_run('pre reset')
+      this.reject_run(new Error('pre reset'))
       this.reject_run = null
     }
     // Dismiss any data with ctrl-C
