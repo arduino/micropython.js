@@ -28,6 +28,7 @@ class MicroPythonBoard {
   constructor() {
     this.port = null
     this.serial = null
+    this.reject_run = null
   }
 
   list_ports() {
@@ -113,7 +114,10 @@ class MicroPythonBoard {
   }
 
   async get_prompt() {
-    const out = await this.write_and_read_until(`\r\x02\x03`, '\r\n>>>')
+    await sleep(100)
+    await this.stop()
+    await sleep(100)
+    const out = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>')
     return Promise.resolve(out)
   }
 
@@ -147,10 +151,22 @@ class MicroPythonBoard {
 
   async run(code, data_consumer) {
     data_consumer = data_consumer || function() {}
-    await this.enter_raw_repl()
-    const output = await this.exec_raw(code || '#', data_consumer)
-    await this.exit_raw_repl()
-    return Promise.resolve(output)
+    return new Promise(async (resolve, reject) => {
+      if (this.reject_run) {
+        this.reject_run(new Error('re-run'))
+        this.reject_run = null
+      }
+      this.reject_run = reject
+      try {
+        await this.enter_raw_repl()
+        const output = await this.exec_raw(code || '#', data_consumer)
+        await this.exit_raw_repl()
+        return resolve(output)
+      } catch (e) {
+        reject(e)
+        this.reject_run = null
+      }
+    })
   }
 
   async eval(k) {
@@ -159,12 +175,20 @@ class MicroPythonBoard {
   }
 
   async stop() {
+    if (this.reject_run) {
+      this.reject_run(new Error('pre stop'))
+      this.reject_run = null
+    }
     // Dismiss any data with ctrl-C
     await this.serial.write(Buffer.from(`\x03`))
     return Promise.resolve()
   }
 
   async reset() {
+    if (this.reject_run) {
+      this.reject_run(new Error('pre reset'))
+      this.reject_run = null
+    }
     // Dismiss any data with ctrl-C
     await this.serial.write(Buffer.from(`\x03`))
     // Soft reboot
