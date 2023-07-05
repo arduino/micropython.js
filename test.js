@@ -211,10 +211,11 @@ const testCases = {
   "remove folder": async (board) => {
     const folderPath = '/test_remove'+parseInt(Math.random()*99999)
     await board.fs_mkdir(folderPath)
-    const ls = await board.fs_ils('/')
+    let ls = await board.fs_ils('/')
     const foundFolder = ls.find(f => f[0] === folderPath.slice(1) && f[1] === 16384)
     assert.ok(foundFolder)
     await board.fs_rmdir(folderPath)
+    ls = await board.fs_ils('/')
     const notFoundFolder = ls.find(f => f[0] === folderPath.slice(1) && f[1] === 16384)
     assert.ok(!notFoundFolder)
   },
