@@ -19,9 +19,10 @@ function fixLineBreak(str) {
 function extract(out) {
   /*
    * Message ($msg) will come out following this template:
-   * "OK${msg}\x04\x04>"
+   * "OK${msg}\x04${err}\x04>"
+   * TODO: consider error handling
    */
-  return out.slice(2, -3).trim()
+  return out.slice(2, -3)
 }
 
 class MicroPythonBoard {
@@ -206,7 +207,7 @@ class MicroPythonBoard {
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
-    const exists = extract(output) == '1'
+    const exists = output[2] == '1'
     return Promise.resolve(exists)
   }
 
