@@ -114,9 +114,9 @@ class MicroPythonBoard {
   }
 
   async get_prompt() {
-    await sleep(100)
+    await sleep(150)
     await this.stop()
-    await sleep(100)
+    await sleep(150)
     const out = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>')
     return Promise.resolve(out)
   }
