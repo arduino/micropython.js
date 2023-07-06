@@ -257,7 +257,7 @@ class MicroPythonBoard {
       )
       await this.exit_raw_repl()
       output = extract(output)
-      return Promise.resolve(output)
+      return Promise.resolve(fixLineBreak(output))
     }
     return Promise.reject(new Error(`Path to file was not specified`))
   }
