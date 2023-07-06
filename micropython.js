@@ -19,9 +19,10 @@ function fixLineBreak(str) {
 function extract(out) {
   /*
    * Message ($msg) will come out following this template:
-   * "OK${msg}\x04\x04>"
+   * "OK${msg}\x04${err}\x04>"
+   * TODO: consider error handling
    */
-  return out.slice(2, -3).trim()
+  return out.slice(2, -3)
 }
 
 class MicroPythonBoard {
@@ -114,9 +115,9 @@ class MicroPythonBoard {
   }
 
   async get_prompt() {
-    await sleep(100)
+    await sleep(150)
     await this.stop()
-    await sleep(100)
+    await sleep(150)
     const out = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>')
     return Promise.resolve(out)
   }
@@ -206,7 +207,7 @@ class MicroPythonBoard {
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
-    const exists = extract(output) == '1'
+    const exists = output[2] == '1'
     return Promise.resolve(exists)
   }
 
@@ -257,7 +258,7 @@ class MicroPythonBoard {
       )
       await this.exit_raw_repl()
       output = extract(output)
-      return Promise.resolve(output)
+      return Promise.resolve(fixLineBreak(output))
     }
     return Promise.reject(new Error(`Path to file was not specified`))
   }
