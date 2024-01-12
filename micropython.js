@@ -69,7 +69,7 @@ class MicroPythonBoard {
   }
 
   close() {
-    if (this.serial.isOpen) {
+    if (this.serial && this.serial.isOpen) {
       return this.serial.close()
     } else {
       return Promise.resolve()
