@@ -266,22 +266,17 @@ class MicroPythonBoard {
   async fs_put(src, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
     if (src && dest) {
-      const contentBuffer = fs.readFileSync(path.resolve(src))
-      let contentString = contentBuffer.toString()
-      contentString = fixLineBreak(contentString)
-      const hexArray = contentString.split('').map(
-        c => c.charCodeAt(0).toString(16).padStart(2, '0')
-      )
+      const fileContent = fs.readFileSync(path.resolve(src), 'binary')
+      const contentBuffer =  Buffer.from(fileContent, 'binary')
       let out = ''
       out += await this.enter_raw_repl()
-      out += await this.exec_raw(`f=open('${dest}','w')\nw=f.write`)
+      out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write`)
       const chunkSize = 48
-      for (let i = 0; i < hexArray.length; i+= chunkSize) {
-        let slice = hexArray.slice(i, i+chunkSize)
-        let bytes = slice.map(h => `0x${h}`)
-        let line = `w(bytes([${bytes.join(',')}]))`
+      for (let i = 0; i < contentBuffer.length; i+= chunkSize) {
+        let slice = Uint8Array.from(contentBuffer.subarray(i, i+chunkSize))
+        let line = `w(bytes([${slice}]))`
         out += await this.exec_raw(line)
-        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
+        data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
       }
       out += await this.exec_raw(`f.close()`)
       out += await this.exit_raw_repl()
@@ -293,20 +288,16 @@ class MicroPythonBoard {
   async fs_save(content, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
     if (content && dest) {
-      let contentString = fixLineBreak(content)
-      const hexArray = contentString.split('').map(
-        c => c.charCodeAt(0).toString(16).padStart(2, '0')
-      )
+      const contentBuffer = Buffer.from(content, 'utf-8')
       let out = ''
       out += await this.enter_raw_repl()
-      out += await this.exec_raw(`f=open('${dest}','w')\nw=f.write`)
+      out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write`)
       const chunkSize = 48
-      for (let i = 0; i < hexArray.length; i+= chunkSize) {
-        let slice = hexArray.slice(i, i+chunkSize)
-        let bytes = slice.map(h => `0x${h}`)
-        let line = `w(bytes([${bytes.join(',')}]))`
+      for (let i = 0; i < contentBuffer.length; i+= chunkSize) {
+        let slice = Uint8Array.from(contentBuffer.subarray(i, i+chunkSize))
+        let line = `w(bytes([${slice}]))`
         out += await this.exec_raw(line)
-        data_consumer( parseInt((i / hexArray.length) * 100) + '%')
+        data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
       }
       out += await this.exec_raw(`f.close()`)
       out += await this.exit_raw_repl()

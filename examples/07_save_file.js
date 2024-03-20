@@ -4,6 +4,7 @@ let content = `
 """
 Test
 """
+# Emoji TEST 💩🤯🫶🏼
 
 from time import sleep
 from machine import Pin

@@ -36,7 +36,7 @@ import time
 # When the following number is sampled at four consecutive
 # even-numbered bits it will have two bits set, but sampling at four
 # consecutive odd-numbered bits will only yield one bit set.
-
+# 😌🥲🙏🏼💩
 _WAVE_MAGIC = 0b0000011100000111
 
 class Stepper:
