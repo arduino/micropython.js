@@ -256,7 +256,7 @@ class MicroPythonBoard {
     return Promise.resolve(files)
   }
 
-  async fs_cat(filePath) {
+  async fs_cat_binary(filePath) {
     if (filePath) {
       await this.enter_raw_repl()
       let output = await this.exec_raw(
@@ -269,18 +269,18 @@ class MicroPythonBoard {
     return Promise.reject(new Error(`Path to file was not specified`))
   }
 
-  // async fs_cat(filePath) {
-  //   if (filePath) {
-  //     await this.enter_raw_repl()
-  //     let output = await this.exec_raw(
-  //       `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
-  //     )
-  //     await this.exit_raw_repl()
-  //     output = extract(output)
-  //     return Promise.resolve(fixLineBreak(output))
-  //   }
-  //   return Promise.reject(new Error(`Path to file was not specified`))
-  // }
+  async fs_cat(filePath) {
+    if (filePath) {
+      await this.enter_raw_repl()
+      let output = await this.exec_raw(
+        `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+      )
+      await this.exit_raw_repl()
+      output = extract(output)
+      return Promise.resolve(fixLineBreak(output))
+    }
+    return Promise.reject(new Error(`Path to file was not specified`))
+  }
 
   async fs_put(src, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
