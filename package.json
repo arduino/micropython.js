@@ -1,6 +1,6 @@
 {
   "name": "micropython.js",
-  "version": "1.4.4",
+  "version": "1.5.0",
   "description": "Interpretation of pyboard.py in javascript",
   "main": "micropython.js",
   "scripts": {
