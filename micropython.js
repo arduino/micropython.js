@@ -25,6 +25,12 @@ function extract(out) {
   return out.slice(2, -3)
 }
 
+function extractBytes(out, cut_before = 2, cut_after = 3) {
+  bytes = out.slice(cut_before, -cut_after)
+  bytes = bytes.split(',').map(Number)
+  return bytes
+}
+
 class MicroPythonBoard {
   constructor() {
     this.port = null
@@ -248,6 +254,19 @@ class MicroPythonBoard {
     output = output.split('OK')
     let files = JSON.parse(output)
     return Promise.resolve(files)
+  }
+
+  async fs_cat_binary(filePath) {
+    if (filePath) {
+      await this.enter_raw_repl()
+      let output = await this.exec_raw(
+        `with open('${filePath}','rb') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(",".join(str(e) for e in b),end=',')`
+      )
+      await this.exit_raw_repl()
+      output = extractBytes(output, 2, 4)
+      return Promise.resolve((output))
+    }
+    return Promise.reject(new Error(`Path to file was not specified`))
   }
 
   async fs_cat(filePath) {
