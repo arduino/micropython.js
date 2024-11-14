@@ -25,6 +25,12 @@ function extract(out) {
   return out.slice(2, -3)
 }
 
+function extractBytes(out, cut_before = 2, cut_after = 3) {
+  bytes = out.slice(cut_before, -cut_after)
+  bytes = bytes.split(',').map(Number)
+  return bytes
+}
+
 class MicroPythonBoard {
   constructor() {
     this.port = null
@@ -254,14 +260,27 @@ class MicroPythonBoard {
     if (filePath) {
       await this.enter_raw_repl()
       let output = await this.exec_raw(
-        `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+        `with open('${filePath}','rb') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(",".join(str(e) for e in b),end=',')`
       )
       await this.exit_raw_repl()
-      output = extract(output)
-      return Promise.resolve(fixLineBreak(output))
+      output = extractBytes(output, 2, 4)
+      return Promise.resolve((output))
     }
     return Promise.reject(new Error(`Path to file was not specified`))
   }
+
+  // async fs_cat(filePath) {
+  //   if (filePath) {
+  //     await this.enter_raw_repl()
+  //     let output = await this.exec_raw(
+  //       `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+  //     )
+  //     await this.exit_raw_repl()
+  //     output = extract(output)
+  //     return Promise.resolve(fixLineBreak(output))
+  //   }
+  //   return Promise.reject(new Error(`Path to file was not specified`))
+  // }
 
   async fs_put(src, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
