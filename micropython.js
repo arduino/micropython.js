@@ -241,12 +241,13 @@ class MicroPythonBoard {
     let command = `import uos\n`
         command += `try:\n`
         command += `  l=[]\n`
-        command += `  for file in uos.ilistdir("${folderPath}"):\n`
-        command += `    l.append(list(file))\n`
+        command += `  for f in uos.ilistdir("${folderPath}"):\n`
+        command += `    l.append(list(f))\n`
         command += `  print(l)\n`
         command += `except OSError:\n`
         command += `  print([])\n`
         command += `del l\n`
+        command += `del f\n`
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
