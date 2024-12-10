@@ -210,6 +210,7 @@ class MicroPythonBoard {
         command += `  print(1)\n`
         command += `except OSError:\n`
         command += `  print(0)\n`
+        command += `del f\n`
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
@@ -240,11 +241,13 @@ class MicroPythonBoard {
     let command = `import uos\n`
         command += `try:\n`
         command += `  l=[]\n`
-        command += `  for file in uos.ilistdir("${folderPath}"):\n`
-        command += `    l.append(list(file))\n`
+        command += `  for f in uos.ilistdir("${folderPath}"):\n`
+        command += `    l.append(list(f))\n`
         command += `  print(l)\n`
         command += `except OSError:\n`
         command += `  print([])\n`
+        command += `del l\n`
+        command += `del f\n`
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
@@ -259,9 +262,16 @@ class MicroPythonBoard {
   async fs_cat_binary(filePath) {
     if (filePath) {
       await this.enter_raw_repl()
-      let output = await this.exec_raw(
-        `with open('${filePath}','rb') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(",".join(str(e) for e in b),end=',')`
-      )
+      const chunkSize = 256
+      let command =  `with open('${filePath}','rb') as f:\n`
+          command += `  while 1:\n`
+          command += `    b=f.read(${chunkSize})\n`
+          command += `    if not b:break\n`
+          command += `    print(",".join(str(e) for e in b),end=',')\n`
+          command += `del f\n`
+          command += `del b\n`
+      let output = await this.exec_raw(command)
+      
       await this.exit_raw_repl()
       output = extractBytes(output, 2, 4)
       return Promise.resolve((output))
@@ -273,7 +283,7 @@ class MicroPythonBoard {
     if (filePath) {
       await this.enter_raw_repl()
       let output = await this.exec_raw(
-        `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')`
+        `with open('${filePath}','r') as f:\n while 1:\n  b=f.read(256)\n  if not b:break\n  print(b,end='')\ndel f\ndel b\n`
       )
       await this.exit_raw_repl()
       output = extract(output)
@@ -297,7 +307,7 @@ class MicroPythonBoard {
         out += await this.exec_raw(line)
         data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
       }
-      out += await this.exec_raw(`f.close()`)
+      out += await this.exec_raw(`f.close()\ndel f\ndel w\n`)
       out += await this.exit_raw_repl()
       return Promise.resolve(out)
     }
@@ -318,7 +328,7 @@ class MicroPythonBoard {
         out += await this.exec_raw(line)
         data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
       }
-      out += await this.exec_raw(`f.close()`)
+      out += await this.exec_raw(`f.close()\ndel f\ndel w\n`)
       out += await this.exit_raw_repl()
       return Promise.resolve(out)
     } else {
