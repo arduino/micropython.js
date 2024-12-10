@@ -82,7 +82,7 @@ const executeString = (args, port, dataConsumer) => {
   const code = args[0] || ''
   return board.open(port)
   .then(() => board.enter_raw_repl())
-  .then(() => board.exec_raw({ command: code, data_consumer: dataConsumer }))
+  .then(() => board.exec_raw(code, dataConsumer))
   .then(async (out) => {
     await board.exit_raw_repl()
     await board.close()
