@@ -140,8 +140,7 @@ const getFile = (args, port, dataConsumer) => {
   return board.open(port)
   .then(async () => {
     try {
-      let output = await board.fs_cat_binary(boardFilename, consumer)
-      output = Buffer.from(output);
+      let output = await board.fs_cat(boardFilename, consumer)
       fs.writeFileSync(diskFilename, output)
       log('output')
       log(output)
