@@ -1,7 +1,7 @@
 {
   "name": "micropython.js",
-  "version": "1.5.2",
-  "description": "A JavaScript implementation of PyBoard.",
+  "version": "1.5.1",
+  "description": "Interpretation of pyboard.py in javascript",
   "main": "micropython.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
