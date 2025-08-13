@@ -2,16 +2,18 @@
 
 This document provides guidelines and instructions for contributing to the project.
 
-
 ## Getting Started
 
 1. Fork the repository
 2. Clone your fork:
+
    ```bash
    git clone https://github.com/your-username/project-name.git
    cd project-name
    ```
+
 3. Create a new branch, be descriptive:
+
    ```bash
    git checkout -b feature/your-feature-name
 
@@ -31,7 +33,6 @@ This document provides guidelines and instructions for contributing to the proje
 - Implement your feature/changes
 - Test any code changes thoroughly
 - Make sure your PR contains all the information for any developer to checkout your branch and validate it
-
 
 ### Commit Guidelines (not enforced but nice)
 
@@ -55,16 +56,15 @@ This document provides guidelines and instructions for contributing to the proje
 
 ### New version/release (maintainers only)
 
-The branch `main` is always assumed to be stable, and new versions are created from there.
-To create a new version of this module:
+Once all PRs are merged into `development` and it's considered ready for a new version, create a new branch from it and name it as the new version (e.g.: `v1.5.5`)
 
-1. Create a new branch from `main` and name it as the new version (e.g.: `v1.5.5`)
 1. Update the `"version"` field in `package.json`
 1. Run `npm install` to update `package-lock.json`
 1. Validate the above
 1. Commit and push these changes
 1. Open a PR from this new branch to `main` to align version numbers
 
+The branch `main` is always assumed to be stable, and contains the latest version.
 
 ## License
 
