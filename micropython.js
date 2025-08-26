@@ -220,9 +220,9 @@ class MicroPythonBoard {
 
   async fs_ls(folderPath) {
     folderPath = folderPath || ''
-    let command = `import uos\n`
+    let command = `import os\n`
         command += `try:\n`
-        command += `  print(uos.listdir("${folderPath}"))\n`
+        command += `  print(os.listdir("${folderPath}"))\n`
         command += `except OSError:\n`
         command += `  print([])\n`
     await this.enter_raw_repl()
@@ -238,16 +238,17 @@ class MicroPythonBoard {
   async fs_ils(folderPath) {
     folderPath = folderPath || ''
     folderPath = folderPath || ''
-    let command = `import uos\n`
+    let command = `import os\n`
         command += `try:\n`
         command += `  l=[]\n`
-        command += `  for f in uos.ilistdir("${folderPath}"):\n`
+        command += `  f=None\n`
+        command += `  for f in os.ilistdir("${folderPath}"):\n`
         command += `    l.append(list(f))\n`
         command += `  print(l)\n`
         command += `except OSError:\n`
         command += `  print([])\n`
         command += `del l\n`
-        command += `del f\n`
+        command += `if f:del f\n`
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
@@ -340,7 +341,7 @@ class MicroPythonBoard {
     if (filePath) {
       await this.enter_raw_repl()
       const output = await this.exec_raw(
-        `import uos\nuos.mkdir('${filePath}')`
+        `import os\nos.mkdir('${filePath}')`
       )
       await this.exit_raw_repl()
       return Promise.resolve(output)
@@ -350,9 +351,9 @@ class MicroPythonBoard {
 
   async fs_rmdir(filePath) {
     if (filePath) {
-      let command = `import uos\n`
+      let command = `import os\n`
           command += `try:\n`
-          command += `  uos.rmdir("${filePath}")\n`
+          command += `  os.rmdir("${filePath}")\n`
           command += `except OSError:\n`
           command += `  print(0)\n`
       await this.enter_raw_repl()
@@ -365,9 +366,9 @@ class MicroPythonBoard {
 
   async fs_rm(filePath) {
     if (filePath) {
-      let command = `import uos\n`
+      let command = `import os\n`
           command += `try:\n`
-          command += `  uos.remove("${filePath}")\n`
+          command += `  os.remove("${filePath}")\n`
           command += `except OSError:\n`
           command += `  print(0)\n`
       await this.enter_raw_repl()
@@ -381,7 +382,7 @@ class MicroPythonBoard {
     if (oldFilePath && newFilePath) {
       await this.enter_raw_repl()
       const output = await this.exec_raw(
-        `import uos\nuos.rename('${oldFilePath}', '${newFilePath}')`
+        `import os\nos.rename('${oldFilePath}', '${newFilePath}')`
       )
       return this.exit_raw_repl()
     }
