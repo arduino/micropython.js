@@ -1,4 +1,4 @@
-# Contributing to [Project Name]
+# Contributing to MicroPython.js
 
 This document provides guidelines and instructions for contributing to the project.
 
@@ -8,8 +8,8 @@ This document provides guidelines and instructions for contributing to the proje
 2. Clone your fork:
 
    ```bash
-   git clone https://github.com/your-username/project-name.git
-   cd project-name
+   git clone https://github.com/arduino/micropython.js.git
+   cd micropython.js
    ```
 
 3. Create a new branch, be descriptive:
@@ -42,7 +42,7 @@ This document provides guidelines and instructions for contributing to the proje
 
 ## Submitting Changes
 
-1. Push your changes to your fork
+1. Push your changes to your own fork
 2. Submit a pull request towards the `development` branch of this repository
 3. Ensure the PR description clearly describes the problem and solution
 4. Include the relevant issue number if applicable

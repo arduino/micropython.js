@@ -2,6 +2,26 @@ const { SerialPort } = require('serialport')
 const fs = require('fs')
 const path = require('path')
 
+class MicroPythonError extends Error {
+  static INTERRUPTED_BY_RERUN  = 'INTERRUPTED_BY_RERUN'
+  static INTERRUPTED_BY_STOP   = 'INTERRUPTED_BY_STOP'
+  static INTERRUPTED_BY_RESET  = 'INTERRUPTED_BY_RESET'
+  static TIMEOUT               = 'TIMEOUT'
+  static NO_DEVICE             = 'NO_DEVICE'
+  static INSUFFICIENT_SPACE    = 'INSUFFICIENT_SPACE'
+  static BOARD_ERROR           = 'BOARD_ERROR'
+  static UNEXPECTED_RESPONSE   = 'UNEXPECTED_RESPONSE'
+  static MISSING_ARGUMENT      = 'MISSING_ARGUMENT'
+  static DISCONNECTED          = 'DISCONNECTED'
+  static PORT_ERROR            = 'PORT_ERROR'
+
+  constructor(message, code) {
+    super(message)
+    this.name = 'MicroPythonError'
+    this.code = code
+  }
+}
+
 function sleep(millis) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
@@ -11,18 +31,15 @@ function sleep(millis) {
 }
 
 function fixLineBreak(str) {
-  // All line breaks must be converted to \n
-  // https://stackoverflow.com/questions/4025760/python-file-write-creating-extra-carriage-return
   return str.replace(/\r\n/g, '\n')
 }
 
 function extract(out) {
-  /*
-   * Message ($msg) will come out following this template:
-   * "OK${msg}\x04${err}\x04>"
-   * TODO: consider error handling
-   */
-  return out.slice(2, -3)
+  // Response format: "OK${stdout}\x04${stderr}\x04>"
+  // exec_raw already throws on stderr — this just pulls stdout
+  const body = out.slice(2)
+  const stdoutEnd = body.indexOf('\x04')
+  return stdoutEnd === -1 ? body : body.slice(0, stdoutEnd)
 }
 
 function extractBytes(out, cut_before = 2, cut_after = 3) {
@@ -36,6 +53,12 @@ class MicroPythonBoard {
     this.port = null
     this.serial = null
     this.reject_run = null
+    this._hasUbinascii = null
+    this._fsRoot = null
+    this.chunkSize = 256
+    this.execTimeout = null
+    this._pendingReads = new Set()
+    this._closing = false
   }
 
   list_ports() {
@@ -47,11 +70,16 @@ class MicroPythonBoard {
       this.port = port
     } else {
       return Promise.reject(
-        new Error(`No device specified`)
+        new MicroPythonError(`No device specified`, MicroPythonError.NO_DEVICE)
       )
     }
     if (this.serial && this.serial.isOpen) {
-      await this.serial.close()
+      await new Promise((resolve, reject) => {
+        this.serial.close((err) => {
+          if (err) reject(err)
+          else resolve()
+        })
+      })
       this.serial = null
     }
 
@@ -68,6 +96,20 @@ class MicroPythonBoard {
         if (err) {
           reject(err)
         } else {
+          this.serial.on('error', (serialErr) => {
+            this._cancelPendingReads(
+              new MicroPythonError(serialErr.message, MicroPythonError.PORT_ERROR)
+            )
+          })
+          this.serial.on('close', () => {
+            if (this._closing) return
+            this._cancelPendingReads(
+              new MicroPythonError('Serial port closed unexpectedly', MicroPythonError.DISCONNECTED)
+            )
+          })
+          await this.enter_raw_repl()
+          await this._getRoot()
+          await this.exit_raw_repl()
           resolve()
         }
       })
@@ -75,44 +117,87 @@ class MicroPythonBoard {
   }
 
   close() {
+    this._hasUbinascii = null
+    this._fsRoot = null
+    this._pendingReads.clear()
     if (this.serial && this.serial.isOpen) {
-      return this.serial.close()
+      this._closing = true
+      return new Promise((resolve, reject) => {
+        this.serial.close((err) => {
+          this._closing = false
+          if (err) reject(err)
+          else resolve()
+        })
+      })
     } else {
       return Promise.resolve()
     }
   }
 
-  read_until(ending, data_consumer) {
+  read_until(ending, data_consumer, timeout = 10000) {
     return new Promise((resolve, reject) => {
       let buff = ''
-      const fn = async () => {
-        const o = await this.serial.read()
-        if (o) {
-          buff += o.toString()
-          if (data_consumer) {
-            data_consumer(o.toString())
-          }
+      let timer = null
+
+      const cleanup = () => {
+        this._pendingReads.delete(cancelFn)
+        this.serial.removeListener('data', fn)
+        this.serial.pause()
+        clearTimeout(timer)
+      }
+
+      const cancelFn = (err) => {
+        cleanup()
+        reject(err)
+      }
+
+      const resetTimer = () => {
+        if (!timeout) return
+        clearTimeout(timer)
+        timer = setTimeout(() => {
+          cleanup()
+          reject(new MicroPythonError(`read_until timed out waiting for '${ending}' — board may have crashed or reset`, MicroPythonError.TIMEOUT))
+        }, timeout)
+      }
+
+      const fn = (o) => {
+        resetTimer()
+        buff += o.toString()
+        if (data_consumer) {
+          data_consumer(o.toString())
         }
         if (buff.indexOf(ending) !== -1) {
-          this.serial.removeListener('readable', fn)
+          cleanup()
           resolve(buff)
         }
       }
-      this.serial.on('readable', fn)
+
+      this._pendingReads.add(cancelFn)
+      this.serial.on('data', fn)
+      this.serial.resume()
+      resetTimer()
     })
   }
 
-  async write_and_read_until(cmd, expect, data_consumer) {
+  _cancelPendingReads(err) {
+    const pending = [...this._pendingReads]
+    this._pendingReads.clear()
+    for (const cancel of pending) {
+      cancel(err)
+    }
+  }
+
+  async write_and_read_until(cmd, expect, data_consumer, timeout = 10000) {
     this.serial.pause()
-    const chunkSize = 128
-    for (let i = 0; i < cmd.length; i+=chunkSize) {
-      const s = cmd.slice(i, i+chunkSize)
+    for (let i = 0; i < cmd.length; i+=this.chunkSize) {
+      const s = cmd.slice(i, i+this.chunkSize)
       await this.serial.write(Buffer.from(s))
-      await sleep(10)
+      await this.serial.drain()
+      await sleep(2)
     }
     let o
     if(expect) {
-      o = await this.read_until(expect, data_consumer)
+      o = await this.read_until(expect, data_consumer, timeout)
     }
     await this.serial.flush()
     await sleep(10)
@@ -129,7 +214,7 @@ class MicroPythonBoard {
   }
 
   async enter_raw_repl() {
-    const out = await this.write_and_read_until(`\x01`, `raw REPL; CTRL-B to exit`)
+    const out = await this.write_and_read_until(`\x01`, `raw REPL; CTRL-B to exit\r\n>`)
     return Promise.resolve(out)
   }
 
@@ -140,32 +225,54 @@ class MicroPythonBoard {
 
   async exec_raw(cmd, data_consumer) {
     await this.write_and_read_until(cmd)
-    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer)
+    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer, this.execTimeout)
     return Promise.resolve(out)
+  }
+
+  exec_raw_err(out) {
+    // Extracts stderr from an exec_raw response buffer.
+    // Use this when the caller needs to detect Python-side errors.
+    const body = out.slice(2)
+    const stdoutEnd = body.indexOf('\x04')
+    return stdoutEnd === -1 ? '' : body.slice(stdoutEnd + 1, body.lastIndexOf('\x04'))
+  }
+
+
+  async _checkRam(code) {
+    const needed = Math.ceil(code.length * 1.8)
+    const free = await this._freeMemory()
+    if (free < needed) {
+      throw new MicroPythonError(
+        `Not enough memory to run script: need ~${needed} bytes, ${free} available`,
+        MicroPythonError.INSUFFICIENT_SPACE
+      )
+    }
   }
 
   async execfile(filePath, data_consumer) {
     data_consumer = data_consumer || function() {}
     if (filePath) {
-      const content = fs.readFileSync(path.resolve(filePath))
+      const code = fs.readFileSync(path.resolve(filePath)).toString()
       await this.enter_raw_repl()
-      const output = await this.exec_raw(content.toString(), data_consumer)
+      await this._checkRam(code)
+      const output = await this.exec_raw(code, data_consumer)
       await this.exit_raw_repl()
       return Promise.resolve(output)
     }
-    return Promise.reject()
+    return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
   async run(code, data_consumer) {
     data_consumer = data_consumer || function() {}
     return new Promise(async (resolve, reject) => {
       if (this.reject_run) {
-        this.reject_run(new Error('re-run'))
+        this.reject_run(new MicroPythonError('re-run', MicroPythonError.INTERRUPTED_BY_RERUN))
         this.reject_run = null
       }
       this.reject_run = reject
       try {
         await this.enter_raw_repl()
+        await this._checkRam(code || '#')
         const output = await this.exec_raw(code || '#', data_consumer)
         await this.exit_raw_repl()
         return resolve(output)
@@ -182,20 +289,28 @@ class MicroPythonBoard {
   }
 
   async stop() {
+    const err = new MicroPythonError('pre stop', MicroPythonError.INTERRUPTED_BY_STOP)
     if (this.reject_run) {
-      this.reject_run(new Error('pre stop'))
+      this.reject_run(err)
       this.reject_run = null
     }
+    this._cancelPendingReads(err)
     // Dismiss any data with ctrl-C
     await this.serial.write(Buffer.from(`\x03`))
     return Promise.resolve()
   }
 
+/*  DEPRECATED: use soft_reset() or hard_reset() instead
+it is currently still available as a transition in consumers such as Arduino Lab for MicroPython Editor
+*/
+  
   async reset() {
+    const err = new MicroPythonError('pre reset', MicroPythonError.INTERRUPTED_BY_RESET)
     if (this.reject_run) {
-      this.reject_run(new Error('pre reset'))
+      this.reject_run(err)
       this.reject_run = null
     }
+    this._cancelPendingReads(err)
     // Dismiss any data with ctrl-C
     await this.serial.write(Buffer.from(`\x03`))
     // Soft reboot
@@ -203,18 +318,45 @@ class MicroPythonBoard {
     return Promise.resolve()
   }
 
+  async soft_reset() {
+    const err = new MicroPythonError('pre reset', MicroPythonError.INTERRUPTED_BY_RESET)
+    if (this.reject_run) {
+      this.reject_run(err)
+      this.reject_run = null
+    }
+    this._cancelPendingReads(err)
+    await this.enter_raw_repl()
+    // machine.soft_reset() resets the Python interpreter without reinitialising
+    // hardware peripherals. Board resets immediately — no \x04> response expected.
+    await this.write_and_read_until(`import machine\nmachine.soft_reset()\n`)
+    await this.serial.write(Buffer.from('\x04'))
+  }
+
+  async hard_reset() {
+    const err = new MicroPythonError('pre reset', MicroPythonError.INTERRUPTED_BY_RESET)
+    if (this.reject_run) {
+      this.reject_run(err)
+      this.reject_run = null
+    }
+    this._cancelPendingReads(err)
+    await this.enter_raw_repl()
+    // Full microcontroller reset — equivalent to pressing the reset button.
+    // Board resets immediately — no \x04> response expected.
+    await this.write_and_read_until(`import machine\nmachine.reset()\n`)
+    await this.serial.write(Buffer.from('\x04'))
+  }
+
   async fs_exists(filePath) {
     filePath = filePath || ''
-    let command = `try:\n`
-        command += `  f = open("${filePath}", "r")\n`
+    let command = `import os\ntry:\n`
+        command += `  os.stat("${filePath}")\n`
         command += `  print(1)\n`
         command += `except OSError:\n`
         command += `  print(0)\n`
-        command += `del f\n`
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
-    const exists = output[2] == '1'
+    const exists = extract(output).trim() === '1'
     return Promise.resolve(exists)
   }
 
@@ -229,14 +371,12 @@ class MicroPythonBoard {
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
     output = extract(output)
-    // Convert text output to js array
     output = output.replace(/'/g, '"')
     const files = JSON.parse(output)
     return Promise.resolve(files)
   }
 
   async fs_ils(folderPath) {
-    folderPath = folderPath || ''
     folderPath = folderPath || ''
     let command = `import os\n`
         command += `try:\n`
@@ -252,32 +392,49 @@ class MicroPythonBoard {
     await this.enter_raw_repl()
     let output = await this.exec_raw(command)
     await this.exit_raw_repl()
-    // Convert text output to js array
     output = extract(output)
     output = output.replace(/'/g, '"')
-    output = output.split('OK')
     let files = JSON.parse(output)
     return Promise.resolve(files)
   }
 
-  async fs_cat_binary(filePath) {
+  async fs_cat_binary(filePath, data_consumer) {
+    data_consumer = data_consumer || function() {}
     if (filePath) {
       await this.enter_raw_repl()
-      const chunkSize = 256
-      let command =  `with open('${filePath}','rb') as f:\n`
-          command += `  while 1:\n`
-          command += `    b=f.read(${chunkSize})\n`
-          command += `    if not b:break\n`
-          command += `    print(",".join(str(e) for e in b),end=',')\n`
-          command += `del f\n`
-          command += `del b\n`
+      await this._checkUbinascii()
+      let command
+      if (this._hasUbinascii) {
+        command =  `with open('${filePath}','rb') as f:\n`
+        command += `  while 1:\n`
+        command += `    b=f.read(256)\n`
+        command += `    if not b:break\n`
+        command += `    print(ubinascii.b2a_base64(b).decode(),end='')\n`
+        command += `del b\n`
+      } else {
+        command =  `with open('${filePath}','rb') as f:\n`
+        command += `  while 1:\n`
+        command += `    b=f.read(256)\n`
+        command += `    if not b:break\n`
+        command += `    print(b.hex(),end='')\n`
+        command += `del b\n`
+      }
+      data_consumer('0%')
       let output = await this.exec_raw(command)
-      
       await this.exit_raw_repl()
-      output = extractBytes(output, 2, 4)
-      return Promise.resolve((output))
+      output = extract(output)
+      data_consumer('100%')
+      let result
+      if (this._hasUbinascii) {
+        result = Buffer.concat(
+          output.split('\n').filter(s => s.length > 0).map(s => Buffer.from(s, 'base64'))
+        )
+      } else {
+        result = Buffer.from(output.trim(), 'hex')
+      }
+      return Promise.resolve(result)
     }
-    return Promise.reject(new Error(`Path to file was not specified`))
+    return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
   async fs_cat(filePath) {
@@ -290,7 +447,76 @@ class MicroPythonBoard {
       output = extract(output)
       return Promise.resolve(fixLineBreak(output))
     }
-    return Promise.reject(new Error(`Path to file was not specified`))
+    return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
+  }
+
+  async _getRoot() {
+    if (this._fsRoot !== null) {
+      return
+    }
+    const out = await this.exec_raw(
+      `import sys\nprint('/flash' if '/flash' in sys.path else '/')\n`
+    )
+    this._fsRoot = extract(out).trim()
+  }
+  async _freeMemory() {
+    const out = await this.exec_raw(`import gc\ngc.collect()\ngc.collect()\nprint(gc.mem_free())\n`)
+    const err = this.exec_raw_err(out)
+    if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+    const value = parseInt(extract(out).trim(), 10)
+    if (isNaN(value)) {
+      throw new MicroPythonError(`_freeMemory: unexpected output from board: ${JSON.stringify(out)}`, MicroPythonError.UNEXPECTED_RESPONSE)
+    }
+    return value
+  }
+
+  async mem_free() {
+    await this.enter_raw_repl()
+    const free = await this._freeMemory()
+    await this.exit_raw_repl()
+    return free
+  }
+
+  async _freeBytes(dirPath) {
+    const out = await this.exec_raw(
+      `import os\ns=os.statvfs('${dirPath}')\nprint(s[0]*s[3])\n`
+    )
+    const err = this.exec_raw_err(out)
+    if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+    const value = parseInt(extract(out).trim(), 10)
+    if (isNaN(value)) {
+      throw new MicroPythonError(`_freeBytes: unexpected output from board: ${JSON.stringify(out)}`, MicroPythonError.UNEXPECTED_RESPONSE)
+    }
+    return value
+  }
+
+  async fs_free(dirPath) {
+    dirPath = dirPath || this._fsRoot || '/'
+    await this.enter_raw_repl()
+    const free = await this._freeBytes(dirPath)
+    await this.exit_raw_repl()
+    return free
+  }
+
+  async _cleanupFile(path) {
+    try {
+      await this.exec_raw(
+        `import os\ntry:\n os.remove('${path}')\nexcept:pass\n`
+      )
+    } catch (_) {}
+  }
+
+  async _checkUbinascii() {
+    if (this._hasUbinascii !== null) {
+      if (this._hasUbinascii) {
+        await this.exec_raw(`import ubinascii\n`)
+      }
+      return
+    }
+    const out = await this.exec_raw(
+      `try:\n import ubinascii\n print(1)\nexcept ImportError:\n print(0)\n`
+    )
+    this._hasUbinascii = extract(out).trim() === '1'
   }
 
   async fs_put(src, dest, data_consumer) {
@@ -300,19 +526,52 @@ class MicroPythonBoard {
       const contentBuffer =  Buffer.from(fileContent, 'binary')
       let out = ''
       out += await this.enter_raw_repl()
-      out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write`)
-      const chunkSize = 48
-      for (let i = 0; i < contentBuffer.length; i+= chunkSize) {
-        let slice = Uint8Array.from(contentBuffer.subarray(i, i+chunkSize))
-        let line = `w(bytes([${slice}]))`
-        out += await this.exec_raw(line)
-        data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
+      await this._checkUbinascii()
+      const free = await this._freeBytes(path.dirname(dest))
+      if (contentBuffer.length > free) {
+        await this.exit_raw_repl()
+        return Promise.reject(new MicroPythonError(
+          `Not enough space on device: need ${contentBuffer.length} bytes, ${free} available`,
+          MicroPythonError.INSUFFICIENT_SPACE
+        ))
       }
-      out += await this.exec_raw(`f.close()\ndel f\ndel w\n`)
-      out += await this.exit_raw_repl()
-      return Promise.resolve(out)
+      try {
+        if (this._hasUbinascii) {
+          out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write\nu=ubinascii.a2b_base64`)
+        } else {
+          out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write\nh=bytes.fromhex`)
+        }
+        for (let i = 0; i < contentBuffer.length; i += this.chunkSize) {
+          const slice = contentBuffer.subarray(i, i + this.chunkSize)
+          const line = this._hasUbinascii
+            ? `w(u('${slice.toString('base64')}'))`
+            : `w(h('${slice.toString('hex')}'))`
+          out += await this.exec_raw(line)
+          data_consumer(parseInt((i / contentBuffer.length) * 100) + '%')
+        }
+        out += await this.exec_raw(this._hasUbinascii
+          ? `f.close()\ndel f\ndel w\ndel u\n`
+          : `f.close()\ndel f\ndel w\ndel h\n`
+        )
+        out += await this.exit_raw_repl()
+        return Promise.resolve(out)
+      } catch (e) {
+        await this._cleanupFile(dest)
+        await this.exit_raw_repl()
+        throw e
+      }
     }
-    return Promise.reject(new Error(`Must specify source and destination paths`))
+    return Promise.reject(new MicroPythonError(`Must specify source and destination paths`, MicroPythonError.MISSING_ARGUMENT))
+  }
+
+  async fs_get(src, dest, data_consumer) {
+    data_consumer = data_consumer || function() {}
+    if (src && dest) {
+      const content = await this.fs_cat_binary(src, data_consumer)
+      fs.writeFileSync(path.resolve(dest), content)
+      return Promise.resolve()
+    }
+    return Promise.reject(new MicroPythonError(`Must specify source and destination paths`, MicroPythonError.MISSING_ARGUMENT))
   }
 
   async fs_save(content, dest, data_consumer) {
@@ -321,73 +580,93 @@ class MicroPythonBoard {
       const contentBuffer = Buffer.from(content, 'utf-8')
       let out = ''
       out += await this.enter_raw_repl()
-      out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write`)
-      const chunkSize = 48
-      for (let i = 0; i < contentBuffer.length; i+= chunkSize) {
-        let slice = Uint8Array.from(contentBuffer.subarray(i, i+chunkSize))
-        let line = `w(bytes([${slice}]))`
-        out += await this.exec_raw(line)
-        data_consumer( parseInt((i / contentBuffer.length) * 100) + '%')
+      await this._checkUbinascii()
+      const free = await this._freeBytes(path.dirname(dest))
+      if (contentBuffer.length > free) {
+        await this.exit_raw_repl()
+        return Promise.reject(new MicroPythonError(
+          `Not enough space on device: need ${contentBuffer.length} bytes, ${free} available`,
+          MicroPythonError.INSUFFICIENT_SPACE
+        ))
       }
-      out += await this.exec_raw(`f.close()\ndel f\ndel w\n`)
-      out += await this.exit_raw_repl()
-      return Promise.resolve(out)
+      try {
+        if (this._hasUbinascii) {
+          out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write\nu=ubinascii.a2b_base64`)
+        } else {
+          out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write\nh=bytes.fromhex`)
+        }
+        for (let i = 0; i < contentBuffer.length; i += this.chunkSize) {
+          const slice = contentBuffer.subarray(i, i + this.chunkSize)
+          const line = this._hasUbinascii
+            ? `w(u('${slice.toString('base64')}'))`
+            : `w(h('${slice.toString('hex')}'))`
+          out += await this.exec_raw(line)
+          data_consumer(parseInt((i / contentBuffer.length) * 100) + '%')
+        }
+        out += await this.exec_raw(this._hasUbinascii
+          ? `f.close()\ndel f\ndel w\ndel u\n`
+          : `f.close()\ndel f\ndel w\ndel h\n`
+        )
+        out += await this.exit_raw_repl()
+        return Promise.resolve(out)
+      } catch (e) {
+        await this._cleanupFile(dest)
+        await this.exit_raw_repl()
+        throw e
+      }
     } else {
-      return Promise.reject(new Error(`Must specify content and destination path`))
+      return Promise.reject(new MicroPythonError(`Must specify content and destination path`, MicroPythonError.MISSING_ARGUMENT))
     }
   }
 
-  async fs_mkdir(filePath) {
-    if (filePath) {
+  async fs_mkdir(dirPath) {
+    if (dirPath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw(
-        `import os\nos.mkdir('${filePath}')`
-      )
+      const output = await this.exec_raw(`import os\nos.mkdir('${dirPath}')\n`)
+      const err = this.exec_raw_err(output)
       await this.exit_raw_repl()
-      return Promise.resolve(output)
+      if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+      return Promise.resolve()
     }
-    return Promise.reject()
+    return Promise.reject(new MicroPythonError(`Path to folder was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
-  async fs_rmdir(filePath) {
-    if (filePath) {
-      let command = `import os\n`
-          command += `try:\n`
-          command += `  os.rmdir("${filePath}")\n`
-          command += `except OSError:\n`
-          command += `  print(0)\n`
+  async fs_rmdir(dirPath) {
+    if (dirPath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw(command)
+      const output = await this.exec_raw(`import os\nos.rmdir('${dirPath}')\n`)
+      const err = this.exec_raw_err(output)
       await this.exit_raw_repl()
-      return Promise.resolve(output)
+      if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+      return Promise.resolve()
     }
-    return Promise.reject()
+    return Promise.reject(new MicroPythonError(`Path to folder was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
   async fs_rm(filePath) {
     if (filePath) {
-      let command = `import os\n`
-          command += `try:\n`
-          command += `  os.remove("${filePath}")\n`
-          command += `except OSError:\n`
-          command += `  print(0)\n`
       await this.enter_raw_repl()
-      const output = await this.exec_raw(command)
-      return this.exit_raw_repl()
+      const output = await this.exec_raw(`import os\nos.remove('${filePath}')\n`)
+      const err = this.exec_raw_err(output)
+      await this.exit_raw_repl()
+      if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+      return Promise.resolve()
     }
-    return Promise.reject()
+    return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
   async fs_rename(oldFilePath, newFilePath) {
     if (oldFilePath && newFilePath) {
       await this.enter_raw_repl()
-      const output = await this.exec_raw(
-        `import os\nos.rename('${oldFilePath}', '${newFilePath}')`
-      )
-      return this.exit_raw_repl()
+      const output = await this.exec_raw(`import os\nos.rename('${oldFilePath}', '${newFilePath}')\n`)
+      const err = this.exec_raw_err(output)
+      await this.exit_raw_repl()
+      if (err.trim()) throw new MicroPythonError(err.trim(), MicroPythonError.BOARD_ERROR)
+      return Promise.resolve()
     }
-    return Promise.reject()
+    return Promise.reject(new MicroPythonError(`Must specify old and new paths`, MicroPythonError.MISSING_ARGUMENT))
   }
 }
 
 module.exports = MicroPythonBoard
+module.exports.MicroPythonError = MicroPythonError

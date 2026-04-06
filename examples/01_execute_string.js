@@ -14,11 +14,11 @@ for i in range(0, 10):
 
 async function main() {
   const board = new Board()
-  await board.open(process.env.PORT)
+  await board.open(process.argv[2])
   await board.enter_raw_repl()
   console.log('exec raw:')
   console.log(command)
-  const output = await board.exec_raw({ command })
+  const output = await board.exec_raw(command)
   console.log('output:')
   console.log(output)
   await board.exit_raw_repl()

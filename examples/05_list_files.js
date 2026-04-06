@@ -2,7 +2,7 @@ const Board = require('../micropython.js')
 
 async function main() {
   const board = new Board()
-  await board.open(process.env.PORT)
+  await board.open(process.argv[2])
   const rootFiles = await board.fs_ils()
   console.log('files at /')
   console.log(rootFiles)

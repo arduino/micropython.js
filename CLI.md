@@ -1,239 +1,190 @@
 # Command Line Interface
 
-# Usage
+## Usage
 
-`node cli.js [ARGUMENTS]…`
+```sh
+node cli.js [--port <port>] [--verbose] <command> [arguments]
+```
 
-* `--listports`: List available USB ports
-* `--port /dev/tty`: Specify which port to connect. Required for the options below.
-* `--listfiles`: List files in the board
-* `--ilistfiles`: Same as `--listfiles` but with additional information (size, inodes, folder/file, etc...)
-* `--executestring "print('watch out for string escaping')”`: Evaluate string
-* `--executefile filename.py`: Run file from the disk
-* `--putfile fileA.py fileB.py`: Upload `fileA.py` from the disk to board renaming it to `fileB.py`
-* `--getfile fileA.py fileB.py`: Download `fileA.py` from the board to disk renaming it to `fileB.py`
-* `--removefile fileA.py`: Remove `fileA.py` from the board
-* `--removedir foldername`: Remove `foldername` from the board
-* `--verbose`: Prints extra logs
+`--port` / `-p` is required for all commands except `--listports` and `--help`.
+`--verbose` / `-v` prints the resolved command, arguments, and port before executing.
+
+---
+
+## Commands
+
+### Board info
+
+| Command | Short | Arguments | Description |
+|---------|-------|-----------|-------------|
+| `--listports` | `-L` | | List available serial ports with vendorId/productId |
+| `--mem` | `-M` | | Show free heap memory (runs `gc.collect()` first) |
+| `--free` | `-f` | `[board-path]` | Show free bytes on the filesystem (defaults to fs root) |
+
+### Execution
+
+| Command | Short | Arguments | Description |
+|---------|-------|-----------|-------------|
+| `--executestring` | `-e` | `"<code>"` | Execute a Python string on the board |
+| `--executefile` | `-x` | `<local.py>` | Execute a local Python file on the board |
+
+### File system
+
+| Command | Short | Arguments | Description |
+|---------|-------|-----------|-------------|
+| `--listfiles` | `-l` | `[folder]` | List filenames on the board (defaults to fs root) |
+| `--ilistfiles` | `-i` | `[folder]` | List files with type, inode, and size (defaults to fs root) |
+| `--exists` | `-E` | `<board-path>` | Check whether a file or folder exists on the board |
+| `--cat` | `-c` | `<board-path>` | Print the text content of a file on the board |
+| `--putfile` | `-u` | `<local> <board>` | Upload a file from disk to the board |
+| `--getfile` | `-g` | `<board> <local>` | Download a file from the board to disk |
+| `--savefile` | `-S` | `"<content>" <board-path>` | Save a string directly as a file on the board |
+| `--makefolder` | `-m` | `<board-path>` | Create a folder on the board |
+| `--removefile` | `-d` | `<board-path>` | Remove a file from the board |
+| `--removefolder` | `-D` | `<board-path>` | Remove a folder from the board |
+| `--rename` | `-n` | `<old-path> <new-path>` | Rename or move a file on the board |
+| `--format` | `-F` | `<pyb\|esp\|rp2>` | Format the board filesystem |
+
+### Board control
+
+| Command | Short | Arguments | Description |
+|---------|-------|-----------|-------------|
+| `--reset` | `-r` | | Soft reset (re-runs `boot.py` and `main.py`) |
+| `--hardreset` | `-R` | | Hard reset via `machine.reset()` |
+
+---
 
 ## Examples
 
-### Listing all available USB ports
+### List available ports
+
+```sh
+node cli.js --listports
+```
 
 ```
-$ node cli.js --listports                                                
 available ports [
   {
     path: '/dev/ttyACM0',
     manufacturer: 'MicroPython',
     serialNumber: '5031503337360009',
-    pnpId: 'usb-MicroPython_Board_in_FS_mode_5031503337360009-if00',
-    locationId: undefined,
     vendorId: '2341',
     productId: '025e'
   }
 ]
 ```
 
-### Listing files in the board
+### List files on the board
 
-```
-$ node cli.js --port /dev/ttyACM0 --listfiles                            
-files at "/" [
-  '.openmv_disk',
-  '.fseventsd',
-  'main.py',
-  'midi.py',
-  'boot.py',
-  '.Trash-1000',
-  'lib'
-]
+```sh
+node cli.js -p /dev/ttyACM0 --listfiles
+node cli.js -p /dev/ttyACM0 --listfiles /lib
 ```
 
-### Listing files and folders in the board
+```
+files at "/" [ 'boot.py', 'main.py', 'lib' ]
+```
 
-AS explained on the [documentation](https://docs.micropython.org/en/v1.9.2/pyboard/library/uos.html#uos.ilistdir), the second element on the array is the file type:
+Returns an error if the path does not exist on the board.
 
-> 0x4000 for directories and 0x8000 for regular files
+### List files with details
+
+```sh
+node cli.js -p /dev/ttyACM0 --ilistfiles
+```
 
 ```
-$ node cli.js --verbose --port /dev/ttyACM0 --ilistfiles
-VERBOSE
-executing command:
-command --ilistfiles
-arguments []
-port /dev/ttyACM0
 files at "/" [
   [ 'boot.py', 32768, 0, 1714 ],
-  [ '.fseventsd', 16384, 0, 0 ],
-  [ 'testy.py', 32768, 0, 78 ],
-  [ 'file.py', 32768, 0, 929 ],
-  [ 'yolo', 16384, 0, 0 ],
-  [ 'lib', 16384, 0, 0 ],
-  [ '.Trashes', 16384, 0, 0 ],
-  [ 'otroteste.py', 32768, 0, 929 ],
-  [ 'turing_machine.py', 32768, 0, 929 ]
+  [ 'lib',     16384, 0, 0    ]
 ]
-command executed --ilistfiles
 ```
 
-### Evaluating a string
+Second element: `32768` = file, `16384` = directory.
 
-```
-$ node cli.js --port /dev/ttyACM0 --executestring "print('hello world!')"
-OK
-MPY: soft reboot
-raw REPL; CTRL-B to exit
->OKhello world!
+### Execute a Python string
+
+```sh
+node cli.js -p /dev/ttyACM0 --executestring "print('hello')"
 ```
 
-### Running the code from your disk
+### Execute a local file
 
-```
-$ node cli.js --port /dev/ttyACM0 --executefile examples/test.py
-OK
-MPY: soft reboot
-raw REPL; CTRL-B to exit
->OKstart
-duh
-duh
-duh
-duh
-duh
-duh
-duh
-duh
-duh
-duh
+```sh
+node cli.js -p /dev/ttyACM0 --executefile script.py
 ```
 
-### Uploading a file from your disk to the board
+### Upload a file to the board
 
-```
-$ node cli.js --port /dev/ttyACM0 --putfile examples/test.py test.py
-```
-
-### Downloading a file from the board to your disk
-
-```
-$ node cli.js --port /dev/ttyACM0 --getfile test.py test.py
-"""
-Test
-"""
-
-from machine import Pin
-from time import sleep
-pin = Pin(6, Pin.OUT)
-print("start")
-for i in range(0, 10):
-    pin.on()
-    sleep(0.1)
-    pin.off()
-    sleep(0.1)
-    print('duh')
+```sh
+node cli.js -p /dev/ttyACM0 --putfile local.py remote.py
 ```
 
-### Verbose
+### Download a file from the board
+
+```sh
+node cli.js -p /dev/ttyACM0 --getfile remote.py local.py
+```
+
+### Save a string as a file on the board
+
+```sh
+node cli.js -p /dev/ttyACM0 --savefile "print('hello')" hello.py
+```
+
+### Print a file from the board
+
+```sh
+node cli.js -p /dev/ttyACM0 --cat boot.py
+```
+
+### Check if a file exists
+
+```sh
+node cli.js -p /dev/ttyACM0 --exists main.py
+```
+
+### Create and remove a folder
+
+```sh
+node cli.js -p /dev/ttyACM0 --makefolder /lib
+node cli.js -p /dev/ttyACM0 --removefolder /lib
+```
+
+### Rename or move a file
+
+```sh
+node cli.js -p /dev/ttyACM0 --rename old.py new.py
+```
+
+### Check free memory and storage
+
+```sh
+node cli.js -p /dev/ttyACM0 --mem
+node cli.js -p /dev/ttyACM0 --free
+```
+
+### Reset the board
+
+```sh
+node cli.js -p /dev/ttyACM0 --reset
+node cli.js -p /dev/ttyACM0 --hardreset
+```
+
+### Verbose output
+
+`--verbose` prints the resolved command, arguments, and port before executing.
+
+```sh
+node cli.js --verbose -p /dev/ttyACM0 --putfile local.py remote.py
+```
 
 ```
-$ node cli.js --verbose --port /dev/ttyACM0 --putfile ./savetest.py savetest.py
 VERBOSE
 executing command:
 command --putfile
-arguments [ './savetest.py', 'savetest.py' ]
+arguments [ 'local.py', 'remote.py' ]
 port /dev/ttyACM0
-0%
-1%
-2%
-3%
-4%
-5%
-6%
-7%
-8%
-9%
-10%
-12%
-13%
-14%
-15%
-16%
-17%
-18%
-19%
-20%
-21%
-22%
-24%
-25%
-26%
-27%
-28%
-29%
-30%
-31%
-32%
-33%
-35%
-36%
-37%
-38%
-39%
-40%
-41%
-42%
-43%
-44%
-45%
-47%
-48%
-49%
-50%
-51%
-52%
-53%
-54%
-55%
-56%
-57%
-59%
-60%
-61%
-62%
-63%
-64%
-65%
-66%
-67%
-68%
-70%
-71%
-72%
-73%
-74%
-75%
-76%
-77%
-78%
-79%
-80%
-82%
-83%
-84%
-85%
-86%
-87%
-88%
-89%
-90%
-91%
-92%
-94%
-95%
-96%
-97%
-98%
-99%
-undefined
+...
 command executed --putfile
 ```

@@ -21,9 +21,9 @@ for i in range(0, 10):
 
 async function main() {
   const board = new Board()
-  await board.open(process.env.PORT)
+  await board.open(process.argv[2])
   console.log('saving content to file')
-  await board.fs_save(content, 'test.py')
+  await board.fs_save(content, 'saved_example.py')
   console.log('done')
   await board.close()
 }
