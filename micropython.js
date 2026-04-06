@@ -59,6 +59,12 @@ class MicroPythonBoard {
     this.execTimeout = null
     this._pendingReads = new Set()
     this._closing = false
+    this._dataCallback = null
+  }
+
+  // Register a callback to receive bytes forwarded to the terminal consumer.
+  setDataCallback(fn) {
+    this._dataCallback = fn
   }
 
   list_ports() {
@@ -107,6 +113,11 @@ class MicroPythonBoard {
               new MicroPythonError('Serial port closed unexpectedly', MicroPythonError.DISCONNECTED)
             )
           })
+          this.serial.on('data', (chunk) => {
+            if (this._pendingReads.size === 0 && this._dataCallback && !this.serial.isPaused()) {
+              this._dataCallback(chunk)
+            }
+          })
           await this.enter_raw_repl()
           await this._getRoot()
           await this.exit_raw_repl()
@@ -134,16 +145,16 @@ class MicroPythonBoard {
     }
   }
 
-  read_until(ending, data_consumer, timeout = 10000) {
+  read_until(ending, data_consumer, timeout = 10000, passThrough = false) {
     return new Promise((resolve, reject) => {
       let buff = ''
       let timer = null
 
       const cleanup = () => {
-        this._pendingReads.delete(cancelFn)
+        clearTimeout(timer)
         this.serial.removeListener('data', fn)
         this.serial.pause()
-        clearTimeout(timer)
+        this._pendingReads.delete(cancelFn)
       }
 
       const cancelFn = (err) => {
@@ -166,6 +177,9 @@ class MicroPythonBoard {
         if (data_consumer) {
           data_consumer(o.toString())
         }
+        if (passThrough && this._dataCallback) {
+          this._dataCallback(o)
+        }
         if (buff.indexOf(ending) !== -1) {
           cleanup()
           resolve(buff)
@@ -187,7 +201,7 @@ class MicroPythonBoard {
     }
   }
 
-  async write_and_read_until(cmd, expect, data_consumer, timeout = 10000) {
+  async write_and_read_until(cmd, expect, data_consumer, timeout = 10000, passThrough = false, resumeAfter = true) {
     this.serial.pause()
     for (let i = 0; i < cmd.length; i+=this.chunkSize) {
       const s = cmd.slice(i, i+this.chunkSize)
@@ -197,11 +211,13 @@ class MicroPythonBoard {
     }
     let o
     if(expect) {
-      o = await this.read_until(expect, data_consumer, timeout)
+      o = await this.read_until(expect, data_consumer, timeout, passThrough)
     }
     await this.serial.flush()
     await sleep(10)
-    this.serial.resume()
+    if (resumeAfter) {
+      this.serial.resume()
+    }
     return o
   }
 
@@ -209,8 +225,10 @@ class MicroPythonBoard {
     await sleep(150)
     await this.stop()
     await sleep(150)
-    const out = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>')
-    return Promise.resolve(out)
+    const step1 = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>', null, 10000, true, false)
+    const step2 = await this.write_and_read_until(`\x02`, '\r\n>>>')
+    const bannerStart = step1.split('\r\n>>> ').pop()
+    return Promise.resolve(bannerStart + step2)
   }
 
   async enter_raw_repl() {
@@ -218,14 +236,14 @@ class MicroPythonBoard {
     return Promise.resolve(out)
   }
 
-  async exit_raw_repl() {
-    const out = await this.write_and_read_until(`\x02`, '\r\n>>>')
+  async exit_raw_repl(passThrough = false) {
+    const out = await this.write_and_read_until(`\x02`, '\r\n>>>', null, 10000, passThrough)
     return Promise.resolve(out)
   }
 
-  async exec_raw(cmd, data_consumer) {
+  async exec_raw(cmd, data_consumer, passThrough = false) {
     await this.write_and_read_until(cmd)
-    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer, this.execTimeout)
+    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer, this.execTimeout, passThrough)
     return Promise.resolve(out)
   }
 
@@ -262,7 +280,7 @@ class MicroPythonBoard {
     return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
-  async run(code, data_consumer) {
+  async run(code, data_consumer, onBeforeExec) {
     data_consumer = data_consumer || function() {}
     return new Promise(async (resolve, reject) => {
       if (this.reject_run) {
@@ -273,7 +291,8 @@ class MicroPythonBoard {
       try {
         await this.enter_raw_repl()
         await this._checkRam(code || '#')
-        const output = await this.exec_raw(code || '#', data_consumer)
+        if (onBeforeExec) await onBeforeExec()
+        const output = await this.exec_raw(code || '#', data_consumer, true)
         await this.exit_raw_repl()
         return resolve(output)
       } catch (e) {
@@ -318,7 +337,7 @@ it is currently still available as a transition in consumers such as Arduino Lab
     return Promise.resolve()
   }
 
-  async soft_reset() {
+  async soft_reset(onBeforeReset) {
     const err = new MicroPythonError('pre reset', MicroPythonError.INTERRUPTED_BY_RESET)
     if (this.reject_run) {
       this.reject_run(err)
@@ -329,6 +348,9 @@ it is currently still available as a transition in consumers such as Arduino Lab
     // machine.soft_reset() resets the Python interpreter without reinitialising
     // hardware peripherals. Board resets immediately — no \x04> response expected.
     await this.write_and_read_until(`import machine\nmachine.soft_reset()\n`)
+    // Fire before sending \x04 so consumers can switch to reset mode before reboot
+    // bytes arrive, while enter_raw_repl() protocol bytes are still suppressed.
+    if (onBeforeReset) onBeforeReset()
     await this.serial.write(Buffer.from('\x04'))
   }
 
