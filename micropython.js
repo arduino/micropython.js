@@ -9,16 +9,18 @@ class MicroPythonError extends Error {
   static TIMEOUT               = 'TIMEOUT'
   static NO_DEVICE             = 'NO_DEVICE'
   static INSUFFICIENT_SPACE    = 'INSUFFICIENT_SPACE'
+  static INSUFFICIENT_MEMORY   = 'INSUFFICIENT_MEMORY'
   static BOARD_ERROR           = 'BOARD_ERROR'
   static UNEXPECTED_RESPONSE   = 'UNEXPECTED_RESPONSE'
   static MISSING_ARGUMENT      = 'MISSING_ARGUMENT'
   static DISCONNECTED          = 'DISCONNECTED'
   static PORT_ERROR            = 'PORT_ERROR'
 
-  constructor(message, code) {
+  constructor(message, code, path = null) {
     super(message)
     this.name = 'MicroPythonError'
     this.code = code
+    this.path = path
   }
 }
 
@@ -225,10 +227,13 @@ class MicroPythonBoard {
     await sleep(150)
     await this.stop()
     await sleep(150)
-    const step1 = await this.write_and_read_until(`\r\x03\x02`, '\r\n>>>', null, 10000, true, false)
-    const step2 = await this.write_and_read_until(`\x02`, '\r\n>>>')
-    const bannerStart = step1.split('\r\n>>> ').pop()
-    return Promise.resolve(bannerStart + step2)
+    // Normalize board state: Ctrl+C interrupts, Ctrl+B exits raw REPL if needed (→ interactive),
+    // Ctrl+A enters raw REPL. This guarantees we can exit raw REPL next and always get a banner,
+    // regardless of whether the board started in interactive or raw REPL mode.
+    await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, false, false)
+    // Exit raw REPL → board always emits the MicroPython banner + \r\n>>>
+    const banner = await this.write_and_read_until(`\x02`, '\r\n>>>')
+    return Promise.resolve(banner)
   }
 
   async enter_raw_repl() {
@@ -262,7 +267,7 @@ class MicroPythonBoard {
     if (free < needed) {
       throw new MicroPythonError(
         `Not enough memory to run script: need ~${needed} bytes, ${free} available`,
-        MicroPythonError.INSUFFICIENT_SPACE
+        MicroPythonError.INSUFFICIENT_MEMORY
       )
     }
   }
@@ -275,7 +280,7 @@ class MicroPythonBoard {
       await this._checkRam(code)
       const output = await this.exec_raw(code, data_consumer)
       await this.exit_raw_repl()
-      return Promise.resolve(output)
+      return Promise.resolve(extract(output))
     }
     return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
@@ -549,12 +554,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
       let out = ''
       out += await this.enter_raw_repl()
       await this._checkUbinascii()
-      const free = await this._freeBytes(path.dirname(dest))
+      const destDir = path.dirname(dest)
+      const free = await this._freeBytes(destDir)
       if (contentBuffer.length > free) {
         await this.exit_raw_repl()
         return Promise.reject(new MicroPythonError(
-          `Not enough space on device: need ${contentBuffer.length} bytes, ${free} available`,
-          MicroPythonError.INSUFFICIENT_SPACE
+          `Not enough space on '${destDir}': need ${contentBuffer.length} bytes, ${free} available`,
+          MicroPythonError.INSUFFICIENT_SPACE,
+          destDir
         ))
       }
       try {
@@ -603,12 +610,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
       let out = ''
       out += await this.enter_raw_repl()
       await this._checkUbinascii()
-      const free = await this._freeBytes(path.dirname(dest))
+      const destDir = path.dirname(dest)
+      const free = await this._freeBytes(destDir)
       if (contentBuffer.length > free) {
         await this.exit_raw_repl()
         return Promise.reject(new MicroPythonError(
-          `Not enough space on device: need ${contentBuffer.length} bytes, ${free} available`,
-          MicroPythonError.INSUFFICIENT_SPACE
+          `Not enough space on '${destDir}': need ${contentBuffer.length} bytes, ${free} available`,
+          MicroPythonError.INSUFFICIENT_SPACE,
+          destDir
         ))
       }
       try {

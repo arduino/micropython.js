@@ -1,7 +1,7 @@
 {
   "name": "micropython.js",
   "version": "2.0.0",
-  "description": "A JavaScript library to interacti with MicroPython boards.",
+  "description": "A JavaScript library to interact with MicroPython boards. Modeled after pyboard.py",
   "author": [
     "Murilo Polese",
     "Ubi de Feo"

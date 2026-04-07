@@ -47,8 +47,7 @@ Or run a single example, passing the port as the first argument:
 node examples/05_list_files.js /dev/ttyUSB0
 ```
 
-## Command Line Interface (CLI)
+## More information
 
-1. Run CLI `node cli.js [ARGUMENTS]...`
-
-[Read more](CLI.md)
+* [Command Line Interface (CLI)](CLI.md)
+* [API](API.md)

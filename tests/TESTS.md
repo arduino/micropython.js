@@ -24,7 +24,7 @@ node examples/run_all.js COM4
 | `07_get_file_contents.js` | Reads back `saved_example.py` from the board |
 | `08_file_exists.js` | Checks existence of a known and an unknown file |
 
-Results are shown as `🟩 success` or `🟥 error` per example.
+Results are shown as `🟩 success`, `🟧 skipped` or `🟥 error` per test.
 
 ---
 
@@ -44,6 +44,7 @@ node tests/test.js <port> upload_binary
 ```
 
 Results are shown as
+
 - `🟩 success`: the test went through
 - `🟧 skipped`: the host to board operation succeeded, board might have thrown an error 
 - `🟥 error`: the board may have crashed/frozen.

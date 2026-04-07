@@ -1,3 +1,13 @@
+// This script runs all the examples in this folder,
+// except the ones requiring manual interaction (e.g. Ctrl+C to stop),
+// such as 09_run_with_stop.js.
+// It reports the success or failure of each example,
+//
+// Usage: node run_all.js <port>
+// e.g.:  node run_all.js /dev/cu.usbxyz
+//        node run_all.js COMx
+//        node run_all.js /dev/ttyUSBx
+
 const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -22,13 +32,19 @@ function runExample(file) {
 }
 
 async function main() {
+  // Files that require manual interaction (e.g. Ctrl+C to stop) are excluded.
+  const interactive = new Set(['09_run_with_stop.js'])
   const examples = fs.readdirSync(__dirname)
-    .filter(f => /^\d+.*\.js$/.test(f))
+    .filter(f => /^\d+.*\.js$/.test(f) && !interactive.has(f))
     .sort()
 
   if (!port) {
     console.log('Usage: node run_all.js <port>')
-    console.log('       node run_all.js /dev/cu.usbmodem2101\n')
+    console.log()
+    console.log('e.g.:  node run_all.js /dev/cu.usbxyz')
+    console.log('       node run_all.js COMx')
+    console.log('       node run_all.js /dev/ttyUSBx')
+    process.exit(1)
   }
 
   const errors = []
@@ -42,7 +58,7 @@ async function main() {
     if (ok) {
       console.log(`🟩 success (${formatElapsed(Date.now() - t0)})`)
     } else {
-      console.log('🟥 error (${formatElapsed(Date.now() - t0)})`)
+      console.log(`🟥 error (${formatElapsed(Date.now() - t0)})`)
       errors.push(file)
     }
   }

@@ -4,11 +4,11 @@ let content = `
 """
 Test
 """
-# Emoji TEST 💩🤯🫶🏼
 
 from time import sleep
 from machine import Pin
 pin = Pin(2, Pin.OUT)
+emoji_string = '🐈‍⬛ 🐕 🐓'
 print("start OK \r\n")
 for i in range(0, 10):
   print('duh')
@@ -16,7 +16,7 @@ for i in range(0, 10):
   sleep(0.1)
   pin.off()
   sleep(0.1)
-
+print(emoji_string)
 `
 
 async function main() {

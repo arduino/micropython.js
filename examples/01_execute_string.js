@@ -3,7 +3,7 @@ const Board = require('../micropython.js')
 const command = `from time import sleep
 from machine import Pin
 pin = Pin(2, Pin.OUT)
-print("start OK \\r\\n")
+print("start")
 for i in range(0, 10):
   print('duh')
   pin.on()
