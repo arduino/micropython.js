@@ -1,10 +1,16 @@
-# micropython.js
+# micropython.js v 2.0.0
 
 This JavaScript library was born as a partial port of [pyboard.py](https://docs.micropython.org/en/latest/reference/pyboard.py.html) in order to be used in [Arduino Lab for MicroPython](https://github.com/arduino/lab-micropython-editor).
 
-
 It can be used to interacti with a MicroPython board using Node.
 In its current incarnation, it relies on Node SerialPort, although future refactoring to support other kinds of transports are in the plans.
+
+Version 2.0.0 has most of the flow re-written for better handling of Serial port drain and Promise-based execution.
+It also introduces a better encoding on the transfer side to increase speed and chunk size.
+
+An error layer allows consumers to detect the reason for failure, and testing for RAM and available space on target have been added.
+
+
 
 ## Basic usage
 
