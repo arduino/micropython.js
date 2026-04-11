@@ -203,13 +203,22 @@ class MicroPythonBoard {
     }
   }
 
+  async _drain() {
+    // drain() maps to FlushFileBuffers on Windows and can hang indefinitely
+    // under ARM64 x64 emulation. Race against a timeout so we never block.
+    return Promise.race([
+      new Promise((resolve, reject) => this.serial.drain(err => err ? reject(err) : resolve())),
+      new Promise(resolve => setTimeout(resolve, 500))
+    ])
+  }
+
   async write_and_read_until(cmd, expect, data_consumer, timeout = 10000, passThrough = false, resumeAfter = true) {
     this.serial.pause()
     for (let i = 0; i < cmd.length; i+=this.chunkSize) {
       const s = cmd.slice(i, i+this.chunkSize)
       await this.serial.write(Buffer.from(s))
-      await this.serial.drain()
-      await sleep(2)
+      await this._drain()
+      await sleep(10)
     }
     let o
     if(expect) {
@@ -230,7 +239,7 @@ class MicroPythonBoard {
     // Normalize board state: Ctrl+C interrupts, Ctrl+B exits raw REPL if needed (→ interactive),
     // Ctrl+A enters raw REPL. This guarantees we can exit raw REPL next and always get a banner,
     // regardless of whether the board started in interactive or raw REPL mode.
-    await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, false, false)
+    await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, true, false)
     // Exit raw REPL → board always emits the MicroPython banner + \r\n>>>
     const banner = await this.write_and_read_until(`\x02`, '\r\n>>>')
     return Promise.resolve(banner)
@@ -301,6 +310,19 @@ class MicroPythonBoard {
         await this.exit_raw_repl()
         return resolve(output)
       } catch (e) {
+        // For interrupt errors (stop/reset/rerun) the caller's recovery flow
+        // (getPrompt / reset) already normalises the board state.  Calling
+        // exit_raw_repl() here would create a pending read that silently
+        // consumes the board's KeyboardInterrupt response, preventing it from
+        // reaching _dataCallback and the terminal.  Only call it for genuine
+        // errors (e.g. INSUFFICIENT_MEMORY) where the board is sitting idle in
+        // raw REPL and no external recovery is in progress.
+        const isInterrupt = e?.code === MicroPythonError.INTERRUPTED_BY_STOP  ||
+                            e?.code === MicroPythonError.INTERRUPTED_BY_RESET  ||
+                            e?.code === MicroPythonError.INTERRUPTED_BY_RERUN
+        if (!isInterrupt) {
+          try { await this.exit_raw_repl() } catch (_) {}
+        }
         reject(e)
         this.reject_run = null
       }
@@ -576,7 +598,7 @@ it is currently still available as a transition in consumers such as Arduino Lab
             ? `w(u('${slice.toString('base64')}'))`
             : `w(h('${slice.toString('hex')}'))`
           out += await this.exec_raw(line)
-          data_consumer(parseInt((i / contentBuffer.length) * 100) + '%')
+          data_consumer(parseInt((i / contentBuffer.length) * 100))
         }
         out += await this.exec_raw(this._hasUbinascii
           ? `f.close()\ndel f\ndel w\ndel u\n`
