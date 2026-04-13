@@ -232,14 +232,23 @@ class MicroPythonBoard {
     return o
   }
 
-  async get_prompt() {
+  async get_prompt(captureInterrupt = false) {
     await sleep(150)
     await this.stop()
     await sleep(150)
-    // Normalize board state: Ctrl+C interrupts, Ctrl+B exits raw REPL if needed (→ interactive),
+    if (captureInterrupt) {
+      // Capture KI/interrupt output with passThrough so _dataCallback (and the terminal
+      // stop-buffer) sees the traceback. Board in raw REPL exec sends the interrupt
+      // response ending with \x04> (EOT + raw REPL prompt). Interactive/idle boards don't
+      // send \x04>, so we time out and continue — nothing to capture.
+      try {
+        await this.write_and_read_until(`\r\x03`, '\x04>', null, 1500, true, false)
+      } catch (_) {}
+    }
+    // Normalize board state: Ctrl+B exits raw REPL if needed (→ interactive),
     // Ctrl+A enters raw REPL. This guarantees we can exit raw REPL next and always get a banner,
     // regardless of whether the board started in interactive or raw REPL mode.
-    await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, true, false)
+    await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, false, false)
     // Exit raw REPL → board always emits the MicroPython banner + \r\n>>>
     const banner = await this.write_and_read_until(`\x02`, '\r\n>>>')
     return Promise.resolve(banner)
