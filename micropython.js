@@ -204,8 +204,6 @@ class MicroPythonBoard {
   }
 
   async _drain() {
-    // drain() maps to FlushFileBuffers on Windows and can hang indefinitely
-    // under ARM64 x64 emulation. Race against a timeout so we never block.
     return Promise.race([
       new Promise((resolve, reject) => this.serial.drain(err => err ? reject(err) : resolve())),
       new Promise(resolve => setTimeout(resolve, 500))
@@ -237,16 +235,15 @@ class MicroPythonBoard {
     await this.stop()
     await sleep(150)
     if (captureInterrupt) {
-      // Capture KI/interrupt output with passThrough so _dataCallback (and the terminal
-      // stop-buffer) sees the traceback. Board in raw REPL exec sends the interrupt
-      // response ending with \x04> (EOT + raw REPL prompt). Interactive/idle boards don't
-      // send \x04>, so we time out and continue — nothing to capture.
+      // Capture KeyboardInterrupt output with passThrough so _dataCallback (and the terminal stop-buffer) sees the traceback.
+      // Board in raw REPL exec sends the interrupt response ending with \x04> (EOT + raw REPL prompt).
+      // Interactive/idle boards don't, therefore we timeout and continue — nothing to capture.
       try {
         await this.write_and_read_until(`\r\x03`, '\x04>', null, 1500, true, false)
       } catch (_) {}
     }
-    // Normalize board state: Ctrl+B exits raw REPL if needed (→ interactive),
-    // Ctrl+A enters raw REPL. This guarantees we can exit raw REPL next and always get a banner,
+    // Normalise board state: Ctrl+B exits raw REPL if needed (->interactive), Ctrl+A enters raw REPL.
+    // This guarantees we can exit raw REPL next and always get the MicroPython banner + >>> prompt,
     // regardless of whether the board started in interactive or raw REPL mode.
     await this.write_and_read_until(`\r\x03\x02\x01`, 'raw REPL; CTRL-B to exit\r\n>', null, 10000, false, false)
     // Exit raw REPL → board always emits the MicroPython banner + \r\n>>>
