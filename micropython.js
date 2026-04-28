@@ -458,6 +458,10 @@ it is currently still available as a transition in consumers such as Arduino Lab
     if (filePath) {
       await this.enter_raw_repl()
       await this._checkUbinascii()
+
+      const sizeOut = await this.exec_raw(`import os\nprint(os.stat('${filePath}')[6])\n`)
+      const fileSize = parseInt(extract(sizeOut).trim())
+
       let command
       if (this._hasUbinascii) {
         command =  `with open('${filePath}','rb') as f:\n`
@@ -474,8 +478,47 @@ it is currently still available as a transition in consumers such as Arduino Lab
         command += `    print(b.hex(),end='')\n`
         command += `del b\n`
       }
+
+      let streamConsumer = null
+      if (fileSize > 0) {
+        let bytesReceived = 0
+        let lineBuf = ''
+        let prefixSkipped = false
+        const hasUbinascii = this._hasUbinascii
+
+        streamConsumer = (chunk) => {
+          if (!prefixSkipped) {
+            lineBuf += chunk
+            const okIdx = lineBuf.indexOf('OK')
+            if (okIdx === -1) return
+            prefixSkipped = true
+            lineBuf = lineBuf.slice(okIdx + 2)
+          } else {
+            lineBuf += chunk
+          }
+          const eotIdx = lineBuf.indexOf('\x04')
+          if (eotIdx !== -1) lineBuf = lineBuf.slice(0, eotIdx)
+
+          if (hasUbinascii) {
+            let nlIdx
+            while ((nlIdx = lineBuf.indexOf('\n')) !== -1) {
+              const line = lineBuf.slice(0, nlIdx)
+              lineBuf = lineBuf.slice(nlIdx + 1)
+              if (line.length > 0) {
+                bytesReceived += Buffer.from(line.trim(), 'base64').length
+                data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+              }
+            }
+          } else {
+            const hexLen = lineBuf.replace(/[^0-9a-fA-F]/g, '').length
+            bytesReceived = Math.floor(hexLen / 2)
+            data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+          }
+        }
+      }
+
       data_consumer('0%')
-      let output = await this.exec_raw(command)
+      let output = await this.exec_raw(command, streamConsumer)
       await this.exit_raw_repl()
       output = extract(output)
       data_consumer('100%')
