@@ -58,6 +58,7 @@ class MicroPythonBoard {
     this._hasUbinascii = null
     this._fsRoot = null
     this.chunkSize = 256
+    this.writeDelay = 10
     this.execTimeout = null
     this._pendingReads = new Set()
     this._closing = false
@@ -216,7 +217,7 @@ class MicroPythonBoard {
       const s = cmd.slice(i, i+this.chunkSize)
       await this.serial.write(Buffer.from(s))
       await this._drain()
-      await sleep(10)
+      await sleep(this.writeDelay)
     }
     let o
     if(expect) {
@@ -573,6 +574,33 @@ it is currently still available as a transition in consumers such as Arduino Lab
     const free = await this._freeMemory()
     await this.exit_raw_repl()
     return free
+  }
+
+  async calibrateDelay(upperBound = 100, margin = 5) {
+    const testScript = '#'.repeat(this.chunkSize * 4) + '\nprint("ok")\n'
+    let lo = 0, hi = upperBound, lastGood = upperBound
+
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2)
+      this.writeDelay = mid
+      try {
+        await this.enter_raw_repl()
+        const out = await this.exec_raw(testScript)
+        await this.exit_raw_repl()
+        if (extract(out).trim() === 'ok' && !this.exec_raw_err(out).trim()) {
+          lastGood = mid
+          hi = mid - 1
+        } else {
+          lo = mid + 1
+        }
+      } catch (_) {
+        try { await this.get_prompt() } catch (_) {}
+        lo = mid + 1
+      }
+    }
+
+    this.writeDelay = Math.ceil(Math.min(upperBound, lastGood + margin) / 10) * 10
+    return this.writeDelay
   }
 
   async _freeBytes(dirPath) {

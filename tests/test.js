@@ -71,6 +71,8 @@ async function before(port, retries = 3, retryDelay = 1500) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       await board.open(port)
+      board.chunkSize = 256
+      board.writeDelay = await board.calibrateDelay()
       return board
     } catch (e) {
       if (attempt === retries) throw e
