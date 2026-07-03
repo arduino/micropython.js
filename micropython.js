@@ -704,22 +704,27 @@ it is currently still available as a transition in consumers such as Arduino Lab
 
   async fs_save(content, dest, data_consumer) {
     data_consumer = data_consumer || function() {}
-    if (content && dest) {
-      const contentBuffer = Buffer.from(content, 'utf-8')
-      let out = ''
-      out += await this.enter_raw_repl()
-      await this._checkUbinascii()
-      const destDir = path.dirname(dest)
-      const free = await this._freeBytes(destDir)
-      if (contentBuffer.length > free) {
-        await this.exit_raw_repl()
-        return Promise.reject(new MicroPythonError(
-          `Not enough space on '${destDir}': need ${contentBuffer.length} bytes, ${free} available`,
-          MicroPythonError.INSUFFICIENT_SPACE,
-          destDir
-        ))
-      }
-      try {
+    if (content == null || !dest) {
+      return Promise.reject(new MicroPythonError(`Must specify content and destination path`, MicroPythonError.MISSING_ARGUMENT))
+    }
+    const contentBuffer = Buffer.from(content, 'utf-8')
+    let out = ''
+    out += await this.enter_raw_repl()
+    await this._checkUbinascii()
+    const destDir = path.dirname(dest)
+    const free = await this._freeBytes(destDir)
+    if (contentBuffer.length > free) {
+      await this.exit_raw_repl()
+      return Promise.reject(new MicroPythonError(
+        `Not enough space on '${destDir}': need ${contentBuffer.length} bytes, ${free} available`,
+        MicroPythonError.INSUFFICIENT_SPACE,
+        destDir
+      ))
+    }
+    try {
+      if (contentBuffer.length === 0) {
+        out += await this.exec_raw(`f=open('${dest}','wb')\nf.close()\n`)
+      } else {
         if (this._hasUbinascii) {
           out += await this.exec_raw(`f=open('${dest}','wb')\nw=f.write\nu=ubinascii.a2b_base64`)
         } else {
@@ -737,15 +742,13 @@ it is currently still available as a transition in consumers such as Arduino Lab
           ? `f.close()\ndel f\ndel w\ndel u\n`
           : `f.close()\ndel f\ndel w\ndel h\n`
         )
-        out += await this.exit_raw_repl()
-        return Promise.resolve(out)
-      } catch (e) {
-        await this._cleanupFile(dest)
-        await this.exit_raw_repl()
-        throw e
       }
-    } else {
-      return Promise.reject(new MicroPythonError(`Must specify content and destination path`, MicroPythonError.MISSING_ARGUMENT))
+      out += await this.exit_raw_repl()
+      return Promise.resolve(out)
+    } catch (e) {
+      await this._cleanupFile(dest)
+      await this.exit_raw_repl()
+      throw e
     }
   }
 
