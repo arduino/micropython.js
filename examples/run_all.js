@@ -33,7 +33,7 @@ function runExample(file) {
 
 async function main() {
   // Files that require manual interaction (e.g. Ctrl+C to stop) are excluded.
-  const interactive = new Set(['09_run_with_stop.js'])
+  const interactive = new Set(['09_run_with_stop.js', '10_connect_while_running.js'])
   const examples = fs.readdirSync(__dirname)
     .filter(f => /^\d+.*\.js$/.test(f) && !interactive.has(f))
     .sort()

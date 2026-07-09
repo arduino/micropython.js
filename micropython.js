@@ -121,6 +121,8 @@ class MicroPythonBoard {
               this._dataCallback(chunk)
             }
           })
+          await this.serial.write(Buffer.from('\r\x03'))
+          await sleep(200)
           await this.enter_raw_repl()
           await this._getRoot()
           await this.exit_raw_repl()
