@@ -290,12 +290,12 @@ class MicroPythonBoard {
     }
   }
 
-  async execfile(filePath, data_consumer) {
+  async execfile(filePath, data_consumer, options = {}) {
     data_consumer = data_consumer || function() {}
     if (filePath) {
       const code = fs.readFileSync(path.resolve(filePath)).toString()
       await this.enter_raw_repl()
-      await this._checkRam(code)
+      if (options.checkRam) await this._checkRam(code)
       const output = await this.exec_raw(code, data_consumer)
       await this.exit_raw_repl()
       return Promise.resolve(extract(output))
@@ -303,7 +303,7 @@ class MicroPythonBoard {
     return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
   }
 
-  async run(code, data_consumer, onBeforeExec) {
+  async run(code, data_consumer, options = {}) {
     data_consumer = data_consumer || function() {}
     return new Promise(async (resolve, reject) => {
       if (this.reject_run) {
@@ -313,8 +313,8 @@ class MicroPythonBoard {
       this.reject_run = reject
       try {
         await this.enter_raw_repl()
-        await this._checkRam(code || '#')
-        if (onBeforeExec) await onBeforeExec()
+        if (options.checkRam) await this._checkRam(code || '#')
+        if (options.onBeforeExec) await options.onBeforeExec()
         const output = await this.exec_raw(code || '#', data_consumer, true)
         await this.exit_raw_repl()
         return resolve(output)
