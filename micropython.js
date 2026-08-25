@@ -58,6 +58,9 @@ class MicroPythonBoard {
     this._hasUbinascii = null
     this._fsRoot = null
     this.chunkSize = 256
+    // How many bytes the board reads per iteration when sending a file back.
+    // Bigger chunks mean fewer iterations, at the cost of board side memory.
+    this.readChunkSize = 768
     this.writeDelay = 10
     this.execTimeout = null
     this._pendingReads = new Set()
@@ -481,14 +484,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
       if (this._hasUbinascii) {
         command =  `with open('${filePath}','rb') as f:\n`
         command += `  while 1:\n`
-        command += `    b=f.read(256)\n`
+        command += `    b=f.read(${this.readChunkSize})\n`
         command += `    if not b:break\n`
         command += `    print(ubinascii.b2a_base64(b).decode(),end='')\n`
         command += `del b\n`
       } else {
         command =  `with open('${filePath}','rb') as f:\n`
         command += `  while 1:\n`
-        command += `    b=f.read(256)\n`
+        command += `    b=f.read(${this.readChunkSize})\n`
         command += `    if not b:break\n`
         command += `    print(b.hex(),end='')\n`
         command += `del b\n`
