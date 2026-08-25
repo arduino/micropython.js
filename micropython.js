@@ -549,6 +549,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
       } else {
         result = Buffer.from(output.trim(), 'hex')
       }
+      // Decoding stops at the first character that isn't part of the encoding,
+      // so anything that cut the transfer short would look like a shorter file
+      if (result.length !== fileSize) {
+        throw new MicroPythonError(
+          `Expected ${fileSize} bytes from "${filePath}" but read ${result.length}`,
+          MicroPythonError.UNEXPECTED_RESPONSE, filePath
+        )
+      }
       return Promise.resolve(result)
     }
     return Promise.reject(new MicroPythonError(`Path to file was not specified`, MicroPythonError.MISSING_ARGUMENT))
