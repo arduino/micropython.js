@@ -494,6 +494,16 @@ it is currently still available as a transition in consumers such as Arduino Lab
         command += `del b\n`
       }
 
+      // The same whole percentage is reached by many chunks in a row, and
+      // repeating it only makes callers filter it out again
+      let lastProgress = null
+      const report = (percentage) => {
+        const progress = percentage + '%'
+        if (progress === lastProgress) return
+        lastProgress = progress
+        data_consumer(progress)
+      }
+
       let streamConsumer = null
       if (fileSize > 0) {
         let bytesReceived = 0
@@ -527,7 +537,7 @@ it is currently still available as a transition in consumers such as Arduino Lab
               lineBuf = lineBuf.slice(nlIdx + 1)
               if (line.length > 0) {
                 bytesReceived += Buffer.from(line.trim(), 'base64').length
-                data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+                report(Math.min(99, Math.round(bytesReceived / fileSize * 100)))
               }
             }
           } else {
@@ -537,12 +547,12 @@ it is currently still available as a transition in consumers such as Arduino Lab
             hexReceived += lineBuf.replace(/[^0-9a-fA-F]/g, '').length
             lineBuf = ''
             bytesReceived = Math.floor(hexReceived / 2)
-            data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+            report(Math.min(99, Math.round(bytesReceived / fileSize * 100)))
           }
         }
       }
 
-      data_consumer('0%')
+      report(0)
       let output = await this.exec_raw(command, streamConsumer)
       const readErr = this.exec_raw_err(output)
       await this.exit_raw_repl()
@@ -550,7 +560,7 @@ it is currently still available as a transition in consumers such as Arduino Lab
         throw new MicroPythonError(readErr.trim(), MicroPythonError.BOARD_ERROR, filePath)
       }
       output = extract(output)
-      data_consumer('100%')
+      report(100)
       let result
       if (this._hasUbinascii) {
         result = Buffer.concat(
