@@ -497,11 +497,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
       let streamConsumer = null
       if (fileSize > 0) {
         let bytesReceived = 0
+        let hexReceived = 0
         let lineBuf = ''
         let prefixSkipped = false
+        let done = false
         const hasUbinascii = this._hasUbinascii
 
         streamConsumer = (chunk) => {
+          if (done) return
           if (!prefixSkipped) {
             lineBuf += chunk
             const okIdx = lineBuf.indexOf('OK')
@@ -512,7 +515,10 @@ it is currently still available as a transition in consumers such as Arduino Lab
             lineBuf += chunk
           }
           const eotIdx = lineBuf.indexOf('\x04')
-          if (eotIdx !== -1) lineBuf = lineBuf.slice(0, eotIdx)
+          if (eotIdx !== -1) {
+            lineBuf = lineBuf.slice(0, eotIdx)
+            done = true
+          }
 
           if (hasUbinascii) {
             let nlIdx
@@ -525,8 +531,12 @@ it is currently still available as a transition in consumers such as Arduino Lab
               }
             }
           } else {
-            const hexLen = lineBuf.replace(/[^0-9a-fA-F]/g, '').length
-            bytesReceived = Math.floor(hexLen / 2)
+            // Hex has no line breaks to drain on, so count what just arrived
+            // and drop it. Rescanning everything received so far on every
+            // chunk makes the cost grow with the square of the file size.
+            hexReceived += lineBuf.replace(/[^0-9a-fA-F]/g, '').length
+            lineBuf = ''
+            bytesReceived = Math.floor(hexReceived / 2)
             data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
           }
         }
