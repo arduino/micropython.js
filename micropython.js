@@ -463,7 +463,19 @@ it is currently still available as a transition in consumers such as Arduino Lab
       await this._checkUbinascii()
 
       const sizeOut = await this.exec_raw(`import os\nprint(os.stat('${filePath}')[6])\n`)
+      const sizeErr = this.exec_raw_err(sizeOut)
+      if (sizeErr.trim()) {
+        await this.exit_raw_repl()
+        throw new MicroPythonError(sizeErr.trim(), MicroPythonError.BOARD_ERROR, filePath)
+      }
       const fileSize = parseInt(extract(sizeOut).trim())
+      if (isNaN(fileSize)) {
+        await this.exit_raw_repl()
+        throw new MicroPythonError(
+          `fs_cat_binary: unexpected output from board: ${JSON.stringify(sizeOut)}`,
+          MicroPythonError.UNEXPECTED_RESPONSE, filePath
+        )
+      }
 
       let command
       if (this._hasUbinascii) {
@@ -522,7 +534,11 @@ it is currently still available as a transition in consumers such as Arduino Lab
 
       data_consumer('0%')
       let output = await this.exec_raw(command, streamConsumer)
+      const readErr = this.exec_raw_err(output)
       await this.exit_raw_repl()
+      if (readErr.trim()) {
+        throw new MicroPythonError(readErr.trim(), MicroPythonError.BOARD_ERROR, filePath)
+      }
       output = extract(output)
       data_consumer('100%')
       let result
