@@ -58,6 +58,14 @@ class MicroPythonBoard {
     this._hasUbinascii = null
     this._fsRoot = null
     this.chunkSize = 256
+    // How many bytes the board reads per iteration when sending a file back.
+    // 256 is what mpremote uses and what every board copes with: bigger chunks
+    // need contiguous board side memory, which fails on a fragmented ESP8266
+    // heap, and put longer uninterrupted bursts on the wire, which overruns
+    // bridges like the CP2102. Raise it only for boards known to be fine with
+    // it. Boards on a 115200 uart are limited by the wire anyway, so there is
+    // little to gain there; it only pays off over native usb.
+    this.readChunkSize = 256
     this.writeDelay = 10
     this.execTimeout = null
     this._pendingReads = new Set()
@@ -463,33 +471,58 @@ it is currently still available as a transition in consumers such as Arduino Lab
       await this._checkUbinascii()
 
       const sizeOut = await this.exec_raw(`import os\nprint(os.stat('${filePath}')[6])\n`)
+      const sizeErr = this.exec_raw_err(sizeOut)
+      if (sizeErr.trim()) {
+        await this.exit_raw_repl()
+        throw new MicroPythonError(sizeErr.trim(), MicroPythonError.BOARD_ERROR, filePath)
+      }
       const fileSize = parseInt(extract(sizeOut).trim())
+      if (isNaN(fileSize)) {
+        await this.exit_raw_repl()
+        throw new MicroPythonError(
+          `fs_cat_binary: unexpected output from board: ${JSON.stringify(sizeOut)}`,
+          MicroPythonError.UNEXPECTED_RESPONSE, filePath
+        )
+      }
 
       let command
       if (this._hasUbinascii) {
         command =  `with open('${filePath}','rb') as f:\n`
         command += `  while 1:\n`
-        command += `    b=f.read(256)\n`
+        command += `    b=f.read(${this.readChunkSize})\n`
         command += `    if not b:break\n`
         command += `    print(ubinascii.b2a_base64(b).decode(),end='')\n`
         command += `del b\n`
       } else {
         command =  `with open('${filePath}','rb') as f:\n`
         command += `  while 1:\n`
-        command += `    b=f.read(256)\n`
+        command += `    b=f.read(${this.readChunkSize})\n`
         command += `    if not b:break\n`
         command += `    print(b.hex(),end='')\n`
         command += `del b\n`
       }
 
+      // The same whole percentage is reached by many chunks in a row, and
+      // repeating it only makes callers filter it out again
+      let lastProgress = null
+      const report = (percentage) => {
+        const progress = percentage + '%'
+        if (progress === lastProgress) return
+        lastProgress = progress
+        data_consumer(progress)
+      }
+
       let streamConsumer = null
       if (fileSize > 0) {
         let bytesReceived = 0
+        let hexReceived = 0
         let lineBuf = ''
         let prefixSkipped = false
+        let done = false
         const hasUbinascii = this._hasUbinascii
 
         streamConsumer = (chunk) => {
+          if (done) return
           if (!prefixSkipped) {
             lineBuf += chunk
             const okIdx = lineBuf.indexOf('OK')
@@ -500,7 +533,10 @@ it is currently still available as a transition in consumers such as Arduino Lab
             lineBuf += chunk
           }
           const eotIdx = lineBuf.indexOf('\x04')
-          if (eotIdx !== -1) lineBuf = lineBuf.slice(0, eotIdx)
+          if (eotIdx !== -1) {
+            lineBuf = lineBuf.slice(0, eotIdx)
+            done = true
+          }
 
           if (hasUbinascii) {
             let nlIdx
@@ -509,22 +545,30 @@ it is currently still available as a transition in consumers such as Arduino Lab
               lineBuf = lineBuf.slice(nlIdx + 1)
               if (line.length > 0) {
                 bytesReceived += Buffer.from(line.trim(), 'base64').length
-                data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+                report(Math.min(99, Math.round(bytesReceived / fileSize * 100)))
               }
             }
           } else {
-            const hexLen = lineBuf.replace(/[^0-9a-fA-F]/g, '').length
-            bytesReceived = Math.floor(hexLen / 2)
-            data_consumer(Math.min(99, Math.round(bytesReceived / fileSize * 100)) + '%')
+            // Hex has no line breaks to drain on, so count what just arrived
+            // and drop it. Rescanning everything received so far on every
+            // chunk makes the cost grow with the square of the file size.
+            hexReceived += lineBuf.replace(/[^0-9a-fA-F]/g, '').length
+            lineBuf = ''
+            bytesReceived = Math.floor(hexReceived / 2)
+            report(Math.min(99, Math.round(bytesReceived / fileSize * 100)))
           }
         }
       }
 
-      data_consumer('0%')
+      report(0)
       let output = await this.exec_raw(command, streamConsumer)
+      const readErr = this.exec_raw_err(output)
       await this.exit_raw_repl()
+      if (readErr.trim()) {
+        throw new MicroPythonError(readErr.trim(), MicroPythonError.BOARD_ERROR, filePath)
+      }
       output = extract(output)
-      data_consumer('100%')
+      report(100)
       let result
       if (this._hasUbinascii) {
         result = Buffer.concat(
@@ -532,6 +576,14 @@ it is currently still available as a transition in consumers such as Arduino Lab
         )
       } else {
         result = Buffer.from(output.trim(), 'hex')
+      }
+      // Decoding stops at the first character that isn't part of the encoding,
+      // so anything that cut the transfer short would look like a shorter file
+      if (result.length !== fileSize) {
+        throw new MicroPythonError(
+          `Expected ${fileSize} bytes from "${filePath}" but read ${result.length}`,
+          MicroPythonError.UNEXPECTED_RESPONSE, filePath
+        )
       }
       return Promise.resolve(result)
     }
