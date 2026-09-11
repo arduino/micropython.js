@@ -59,8 +59,13 @@ class MicroPythonBoard {
     this._fsRoot = null
     this.chunkSize = 256
     // How many bytes the board reads per iteration when sending a file back.
-    // Bigger chunks mean fewer iterations, at the cost of board side memory.
-    this.readChunkSize = 768
+    // 256 is what mpremote uses and what every board copes with: bigger chunks
+    // need contiguous board side memory, which fails on a fragmented ESP8266
+    // heap, and put longer uninterrupted bursts on the wire, which overruns
+    // bridges like the CP2102. Raise it only for boards known to be fine with
+    // it. Boards on a 115200 uart are limited by the wire anyway, so there is
+    // little to gain there; it only pays off over native usb.
+    this.readChunkSize = 256
     this.writeDelay = 10
     this.execTimeout = null
     this._pendingReads = new Set()
