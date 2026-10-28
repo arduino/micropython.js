@@ -24,6 +24,10 @@ class MicroPythonError extends Error {
   }
 }
 
+// How long (ms) a command that open() issues may stay silent before it gives up.
+// Same limit as the other handshake steps (enter_raw_repl / exit_raw_repl).
+const HANDSHAKE_TIMEOUT = 10000
+
 function sleep(millis) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
@@ -108,36 +112,42 @@ class MicroPythonBoard {
 		})
     this.serial.pause()
 
-    return new Promise((resolve, reject) => {
-      this.serial.open(async (err) => {
-        if (err) {
-          reject(err)
-        } else {
-          this.serial.on('error', (serialErr) => {
-            this._cancelPendingReads(
-              new MicroPythonError(serialErr.message, MicroPythonError.PORT_ERROR)
-            )
-          })
-          this.serial.on('close', () => {
-            if (this._closing) return
-            this._cancelPendingReads(
-              new MicroPythonError('Serial port closed unexpectedly', MicroPythonError.DISCONNECTED)
-            )
-          })
-          this.serial.on('data', (chunk) => {
-            if (this._pendingReads.size === 0 && this._dataCallback && !this.serial.isPaused()) {
-              this._dataCallback(chunk)
-            }
-          })
-          await this.serial.write(Buffer.from('\r\x03'))
-          await sleep(200)
-          await this.enter_raw_repl()
-          await this._getRoot()
-          await this.exit_raw_repl()
-          resolve()
-        }
-      })
+    await new Promise((resolve, reject) => {
+      this.serial.open((err) => (err ? reject(err) : resolve()))
     })
+
+    this.serial.on('error', (serialErr) => {
+      this._cancelPendingReads(
+        new MicroPythonError(serialErr.message, MicroPythonError.PORT_ERROR)
+      )
+    })
+    this.serial.on('close', () => {
+      if (this._closing) return
+      this._cancelPendingReads(
+        new MicroPythonError('Serial port closed unexpectedly', MicroPythonError.DISCONNECTED)
+      )
+    })
+    this.serial.on('data', (chunk) => {
+      if (this._pendingReads.size === 0 && this._dataCallback && !this.serial.isPaused()) {
+        this._dataCallback(chunk)
+      }
+    })
+
+    // The handshake runs here rather than inside the serial.open() callback:
+    // an error thrown in that callback never reaches the caller, which left
+    // open() pending forever whenever a handshake step failed.
+    try {
+      await this.serial.write(Buffer.from('\r\x03'))
+      await sleep(200)
+      await this.enter_raw_repl()
+      await this._getRoot()
+      await this.exit_raw_repl()
+    } catch (e) {
+      // The caller gets an error and has no reason to call close(), so don't
+      // leave a half-opened port behind.
+      await this.close().catch(() => {})
+      throw e
+    }
   }
 
   close() {
@@ -272,9 +282,9 @@ class MicroPythonBoard {
     return Promise.resolve(out)
   }
 
-  async exec_raw(cmd, data_consumer, passThrough = false) {
+  async exec_raw(cmd, data_consumer, passThrough = false, timeout = this.execTimeout) {
     await this.write_and_read_until(cmd)
-    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer, this.execTimeout, passThrough)
+    const out = await this.write_and_read_until('\x04', '\x04>', data_consumer, timeout, passThrough)
     return Promise.resolve(out)
   }
 
@@ -607,8 +617,13 @@ it is currently still available as a transition in consumers such as Arduino Lab
     if (this._fsRoot !== null) {
       return
     }
+    // Bounded, unlike the default exec_raw: this runs while open() is waiting,
+    // and a board that stops answering here would otherwise block it forever.
     const out = await this.exec_raw(
-      `import sys\nprint('/flash' if '/flash' in sys.path else '/')\n`
+      `import sys\nprint('/flash' if '/flash' in sys.path else '/')\n`,
+      null,
+      false,
+      HANDSHAKE_TIMEOUT
     )
     this._fsRoot = extract(out).trim()
   }

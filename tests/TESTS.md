@@ -79,3 +79,24 @@ Results are shown as
 | `upload_binary_file` | All 256 byte values (0x00–0xFF) transfer without corruption |
 | `upload_binary_file_base64_path` | Binary roundtrip forced through the base64 (`ubinascii`) encoding path |
 | `upload_binary_file_hex_path` | Binary roundtrip forced through the hex fallback encoding path |
+
+---
+
+## Offline tests — `tests/offline/`
+
+These run without a board: a scripted fake replaces the `serialport` module. They cover what the hardware suite can't trigger on demand — how `open()` and `exec_raw()` behave when the board stays silent, the port drops, or the port reports an error.
+
+```sh
+node --test tests/offline/*.test.js
+```
+
+| Test | What it covers |
+|------|---------------|
+| `open()` resolves with a board that answers the handshake | Baseline: normal handshake, filesystem root detected |
+| `open()` rejects … when the port drops during the handshake | `DISCONNECTED` reaches the caller instead of `open()` staying pending |
+| `open()` rejects … when the port reports an error during the handshake | `PORT_ERROR` reaches the caller |
+| `open()` closes the port and resets cached state … | No half-opened port is left behind after a failed handshake |
+| `open()` can be retried on the same instance … | A failed attempt doesn't poison the instance |
+| `exec_raw()` rejects with `TIMEOUT` … | The new `timeout` parameter |
+| `exec_raw()` without a timeout still follows `execTimeout` | Default stays unbounded, so `run()` may stay silent for a long time |
+| the filesystem root query done by `open()` is bounded | `open()` can't block forever on `_getRoot()` |
