@@ -78,6 +78,8 @@ Opens the serial port, enters raw REPL, detects the filesystem root, and exits r
 
 Throws `NO_DEVICE` if `port` is omitted.
 
+If the handshake fails — the board stays silent (`TIMEOUT`), the port drops (`DISCONNECTED`) or reports an error (`PORT_ERROR`) — `open()` rejects with that error and closes the port again. There is nothing to clean up, and `open()` can simply be retried.
+
 ---
 
 ### `close()`
@@ -143,7 +145,7 @@ Sends Ctrl-C + Ctrl-B and waits for the `>>>` prompt. Returns the MicroPython ba
 
 ## Execution
 
-### `exec_raw(cmd, [data_consumer], [passThrough])`
+### `exec_raw(cmd, [data_consumer], [passThrough], [timeout])`
 
 ```js
 await board.enter_raw_repl()
@@ -158,6 +160,7 @@ Executes a Python string in raw REPL mode. Must be called between `enter_raw_rep
 | `cmd`           | string   | —       | Python code to execute                              |
 | `data_consumer` | function | `null`  | Called with each received chunk as a string         |
 | `passThrough`   | boolean  | `false` | Forward received bytes to the data callback         |
+| `timeout`       | number   | `execTimeout` | Reject with `TIMEOUT` if the board sends nothing for this many ms. `null` waits indefinitely, which is the default because scripts can run a long time without printing |
 
 Returns a `Promise` resolving to the raw response buffer string (`OK${stdout}\x04${stderr}\x04>`). Use `exec_raw_err()` on this buffer to check for Python-side errors before extracting stdout.
 
